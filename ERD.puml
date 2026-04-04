@@ -1,0 +1,787 @@
+@startuml
+title FMPDF - MCD v4 (Français)
+
+skinparam classAttributeIconSize 0
+skinparam class {
+  BackgroundColor #F8FAFC
+  BorderColor #2563EB
+  ArrowColor #1E40AF
+}
+skinparam linetype ortho
+skinparam nodesep 60
+skinparam ranksep 80
+
+' ══════════════════════════════════════════════════════════════════
+' RÔLES & PERMISSIONS
+' ══════════════════════════════════════════════════════════════════
+
+entity "ROLE" as ROLE {
+  * id_role : INTEGER <<CP>>
+  --
+  * nom_role : VARCHAR(100) <<UNIQUE>>
+  * description : TEXT
+}
+
+note right of ROLE
+  **5 rôles :**
+  - service_financiere
+  - gestionnaire_magasin
+  - chef_service (demandeur)
+  - admin
+  - fournisseur (lecture seule)
+end note
+
+entity "PERMISSION" as PERMISSION {
+  * id_permission : INTEGER <<CP>>
+  --
+  * module : VARCHAR(100)
+  * action : VARCHAR(100)
+  * description : TEXT
+}
+
+entity "ROLE_PERMISSION" as ROLE_PERM {
+  * id_role : INTEGER <<CP,CE>>
+  * id_permission : INTEGER <<CP,CE>>
+  --
+  * accorde : BOOLEAN
+}
+
+' ══════════════════════════════════════════════════════════════════
+' SERVICE
+' ══════════════════════════════════════════════════════════════════
+
+entity "SERVICE" as SERVICE {
+  * id_service : INTEGER <<CP>>
+  --
+  * nom_service : VARCHAR(200)
+  * type_service : ENUM
+  * description : TEXT
+  * lettre_nomination_chef : VARCHAR(500)
+}
+
+note right of SERVICE
+  **CORRECTION v3 :**
+  FK circulaire supprimée.
+  id_chef retiré — le chef est
+  l'UTILISATEUR dont id_role = chef_service
+  ET id_service = ce service.
+  lettre_nomination_chef déplacée
+  depuis UTILISATEUR vers ici.
+
+  **type_service :**
+  - administratif | chu | decanat
+  - pharmacie | dentaire | labo
+  - association
+end note
+
+' ══════════════════════════════════════════════════════════════════
+' UTILISATEURS
+' ══════════════════════════════════════════════════════════════════
+
+entity "UTILISATEUR" as USER {
+  * id_utilisateur : INTEGER <<CP>>
+  --
+  * nom_complet : VARCHAR(200)
+  * email : VARCHAR(200) <<UNIQUE>>
+  * mot_de_passe_hash : VARCHAR(500)
+  * actif : BOOLEAN
+  * titre_poste : VARCHAR(100)
+  * date_creation : TIMESTAMP
+  --
+  # id_role : INTEGER <<CE>>
+  # id_service : INTEGER <<CE>>
+}
+
+note right of USER
+  **CORRECTION v3 :**
+  lettre_nomination retirée
+  → déplacée sur SERVICE.
+  Pas de FK retour vers SERVICE
+  (FK circulaire supprimée).
+end note
+
+' ══════════════════════════════════════════════════════════════════
+' FOURNISSEUR
+' ══════════════════════════════════════════════════════════════════
+
+entity "FOURNISSEUR" as SUPPLIER {
+  * id_fournisseur : INTEGER <<CP>>
+  --
+  * nom_societe : VARCHAR(255)
+  * nom_responsable : VARCHAR(200)
+  * email : VARCHAR(200)
+  * telephone : VARCHAR(20)
+  * adresse : TEXT
+  * evaluation : DECIMAL(3,2)
+  --
+  # id_utilisateur : INTEGER <<CE>> (nullable, unique)
+}
+
+note right of SUPPLIER
+  id_utilisateur optionnel :
+  NULL si pas de compte portail.
+  UNIQUE si renseigné
+  (1 compte par fournisseur).
+  Rôle du compte = fournisseur
+  → lecture seule BC/Marchés.
+end note
+
+' ══════════════════════════════════════════════════════════════════
+' CATÉGORIES
+' ══════════════════════════════════════════════════════════════════
+
+entity "CATEGORIE" as CATEGORY {
+  * id_categorie : INTEGER <<CP>>
+  --
+  * nom_categorie : VARCHAR(200)
+  * description : TEXT
+  * actif : BOOLEAN
+}
+
+note top of CATEGORY
+  **2 catégories racines :**
+  - Consommable → STOCK (quantité)
+  - Bien Inventaire → INSTANCE_RESSOURCE par unité
+end note
+
+entity "SOUS_CATEGORIE" as SUBCATEGORY {
+  * id_sous_categorie : INTEGER <<CP>>
+  --
+  * nom_sous_categorie : VARCHAR(200)
+  * description : TEXT
+  --
+  # id_categorie : INTEGER <<CE>>
+}
+
+note top of SUBCATEGORY
+  **Sous "Bien Inventaire" :**
+  MATERIEL_INFORMATIQUE
+  MATERIEL_ENSEIGNEMENT
+  MOBILIER_DE_BUREAU
+  FOURNITURE_INFORMATIQUE
+
+  **Sous "Consommable" :**
+  ELECTRIQUE | PAPETERIE
+  PRODUITS_HYGIENE
+  INFORMATIQUE_CONSOMMABLE
+  AUTRES
+end note
+
+' ══════════════════════════════════════════════════════════════════
+' RESSOURCES
+' ══════════════════════════════════════════════════════════════════
+
+entity "RESSOURCE" as RESOURCE {
+  * id_ressource : INTEGER <<CP>>
+  --
+  * designation : VARCHAR(255)
+  * description : TEXT
+  * unite_mesure : VARCHAR(20)
+  --
+  # id_categorie : INTEGER <<CE>>
+  # id_sous_categorie : INTEGER <<CE>>
+}
+
+entity "INSTANCE_RESSOURCE" as RESOURCE_INSTANCE {
+  * id_instance : INTEGER <<CP>>
+  --
+  * numero_inventaire : VARCHAR(50) <<UNIQUE>>
+  * date_acquisition : DATE
+  * valeur_acquisition : DECIMAL(10,2)
+  * statut : ENUM
+  * etat : ENUM
+  * localisation_actuelle : VARCHAR(200)
+  * date_derniere_affectation : DATE
+  * observation : TEXT
+  --
+  # id_ressource : INTEGER <<CE>>
+  # id_service_actuel : INTEGER <<CE>>
+  # id_lot : INTEGER <<CE>>
+}
+
+note right of RESOURCE_INSTANCE
+  **Uniquement "Bien Inventaire"**
+
+  **statut :**
+  en_stock | en_service
+  en_maintenance | hors_service | retire
+
+  **etat (source de vérité unique) :**
+  neuf | bon_etat | usage_normal
+  endommage | hors_service
+
+  CORRECTION v3 :
+  etat retiré de RETOUR_MATERIEL.
+  Mis à jour par signal Django
+  après décision de retour.
+end note
+
+entity "STOCK" as STOCK {
+  * id_stock : INTEGER <<CP>>
+  --
+  * quantite_disponible : INTEGER
+  * quantite_reservee : INTEGER
+  * seuil_alerte : INTEGER
+  * date_mise_a_jour : TIMESTAMP
+  --
+  # id_ressource : INTEGER <<CE>> <<UNIQUE>>
+}
+
+note right of STOCK
+  **Uniquement Consommables.**
+  TRIGGER AFTER UPDATE :
+  IF quantite_disponible <= seuil_alerte
+    INSERT NOTIFICATION (alerte_stock)
+end note
+
+entity "MOUVEMENT_STOCK" as MOVEMENT {
+  * id_mouvement : INTEGER <<CP>>
+  --
+  * type_mouvement : ENUM
+  * quantite : INTEGER
+  * date_mouvement : TIMESTAMP
+  * observation : TEXT
+  * id_content_type : INTEGER
+  * id_source : INTEGER
+  --
+  # id_ressource : INTEGER <<CE>>
+  # id_instance_ressource : INTEGER <<CE>> (nullable)
+  # id_utilisateur : INTEGER <<CE>>
+}
+
+note right of MOVEMENT
+  **type_mouvement :**
+  entree | sortie | retour
+  transfert | rebut
+
+  id_content_type + id_source =
+  Django GenericForeignKey
+  vers LIGNE_DECHARGE,
+  RETOUR_MATERIEL, LOT_ARTICLE
+  ou STAGING_ITEM (si rejet).
+end note
+
+' ══════════════════════════════════════════════════════════════════
+' ACHATS & IMPORTATION IA
+' ══════════════════════════════════════════════════════════════════
+
+entity "MARCHE_BC" as MARKET {
+  * id_marche : INTEGER <<CP>>
+  --
+  * reference : VARCHAR(100) <<UNIQUE>>
+  * type_acquisition : ENUM
+  * date_creation : DATE
+  * delai_reception_jours : INTEGER
+  * date_livraison_prevue : DATE
+  * statut : ENUM
+  * fichier_cps : VARCHAR(500)
+  --
+  # id_fournisseur : INTEGER <<CE>> (nullable)
+  # id_cree_par : INTEGER <<CE>>
+}
+
+note bottom of MARKET
+  **type_acquisition :**
+  marche (90j) | bon_commande (40j)
+  donation (pas de délai,
+  id_fournisseur = NULL)
+
+  **statut :**
+  en_attente_livraison
+  receptionne_et_stocke
+  non_conforme
+end note
+
+entity "MARCHE_ETAPE" as MARKET_STEP {
+  * id_etape : INTEGER <<CP>>
+  --
+  * ordre : INTEGER
+  * nom_etape : ENUM
+  * statut : ENUM
+  * date_debut : TIMESTAMP
+  * date_fin : TIMESTAMP (nullable)
+  * commentaire : TEXT
+  --
+  # id_marche : INTEGER <<CE>>
+  # id_modifie_par : INTEGER <<CE>>
+}
+
+note right of MARKET_STEP
+  **NOUVEAU v4 — Portail fournisseur.**
+  Alimente la timeline visuelle
+  accessible en lecture seule
+  par le fournisseur connecté.
+
+  **nom_etape (ordre fixe) :**
+  1. marche_cree
+  2. contrat_signe
+  3. en_attente_livraison
+  4. livraison_en_cours
+  5. receptionne_magasin
+  6. controle_qualite
+  7. paiement_en_cours
+  8. paiement_effectue
+
+  **statut :**
+  en_attente | en_cours
+  complete | bloque
+
+  Le fournisseur voit uniquement
+  les étapes de SES marchés/BC.
+  Aucune écriture possible.
+end note
+
+entity "IMPORT_EXCEL_BC" as BC_EXCEL {
+  * id_import : INTEGER <<CP>>
+  --
+  * fichier_excel_original : VARCHAR(500)
+  * date_import : TIMESTAMP
+  * statut_import : ENUM
+  * source_type : ENUM
+  * observations : TEXT
+  --
+  # id_marche : INTEGER <<CE>> <<UNIQUE>>
+  # id_importe_par : INTEGER <<CE>>
+}
+
+note right of BC_EXCEL
+  **source_type :**
+  bc | marche | donation
+  → profil d'extraction IA adapté.
+
+  **statut_import :**
+  brouillon | en_revision
+  valide | rejete
+end note
+
+entity "STAGING_ITEM" as STAGING {
+  * id_staging : INTEGER <<CP>>
+  --
+  * designation_brute : VARCHAR(500)
+  * designation_normalisee : VARCHAR(255)
+  * quantite : INTEGER
+  * type_detecte : ENUM
+  * confiance_ia : DECIMAL(4,2)
+  * statut : ENUM
+  * correction_gestionnaire : TEXT
+  --
+  # id_import : INTEGER <<CE>>
+  # id_categorie_suggeree : INTEGER <<CE>> (nullable)
+  # id_ressource_liee : INTEGER <<CE>> (nullable)
+}
+
+note right of STAGING
+  **NOUVEAU v3 — Table de revue IA.**
+  Créée après extraction OCR/NLP.
+  Le gestionnaire revoit chaque ligne
+  avant validation vers LOT_ARTICLE.
+
+  **type_detecte :**
+  consommable | bien_inventaire
+
+  **statut :**
+  en_attente | approuve
+  rejete | modifie
+
+  confiance_ia : 0.00 → 1.00
+  Lignes < 0.70 affichées en orange
+  dans l'interface de revue.
+
+  Après approbation :
+  → LOT_ARTICLE créé
+  → STOCK / INSTANCE_RESSOURCE mis à jour
+  → MOUVEMENT_STOCK (entree) inséré
+end note
+
+entity "LOT_ARTICLE" as LOT {
+  * id_lot : INTEGER <<CP>>
+  --
+  * numero_lot : INTEGER
+  * designation : VARCHAR(255)
+  * quantite_commandee : INTEGER
+  * quantite_recue : INTEGER
+  * observation : TEXT
+  --
+  # id_marche : INTEGER <<CE>>
+  # id_ressource : INTEGER <<CE>>
+}
+
+' ══════════════════════════════════════════════════════════════════
+' DEMANDES INTERNES
+' ══════════════════════════════════════════════════════════════════
+
+entity "DEMANDE" as REQUEST {
+  * id_demande : INTEGER <<CP>>
+  --
+  * date_demande : TIMESTAMP
+  * urgence : ENUM
+  * statut : ENUM
+  * justification : TEXT
+  * date_validation : TIMESTAMP
+  * commentaire_validation : TEXT
+  --
+  # id_chef_demandeur : INTEGER <<CE>>
+  # id_service : INTEGER <<CE>>
+  # id_valide_par : INTEGER <<CE>> (nullable)
+}
+
+note right of REQUEST
+  **CORRECTION v3 :**
+  lien_suivi supprimé
+  → généré dynamiquement via
+  reverse('demande-detail', id_demande).
+
+  id_valide_par nullable
+  (NULL jusqu'à validation).
+
+  **CORRECTION v4 — Scope chef_service :**
+  Voit uniquement SES demandes
+  (filtre id_chef_demandeur = user).
+  Pas de visibilité stock.
+  Actions : créer demande, voir
+  historique, PDF décharge,
+  upload scan signé.
+  1 DEMANDE → 1 DECHARGE (jamais partiel).
+  Gestionnaire valide uniquement
+  quand stock 100% disponible.
+
+  **statut :**
+  en_cours | validee | en_preparation
+  complete_avec_decharge
+  partielle | refusee
+
+  **urgence :** normal | moyen | urgent
+end note
+
+entity "LIGNE_DEMANDE" as REQUEST_LINE {
+  * id_ligne : INTEGER <<CP>>
+  --
+  * quantite_demandee : INTEGER
+  * quantite_accordee : INTEGER
+  * disponibilite_pct : INTEGER
+  * observation : TEXT
+  --
+  # id_demande : INTEGER <<CE>>
+  # id_ressource : INTEGER <<CE>>
+}
+
+' ══════════════════════════════════════════════════════════════════
+' DÉCHARGE
+' ══════════════════════════════════════════════════════════════════
+
+entity "DECHARGE" as DECHARGE {
+  * id_decharge : INTEGER <<CP>>
+  --
+  * numero_decharge : VARCHAR(50) <<UNIQUE>>
+  * date_generation : TIMESTAMP
+  * date_livraison : DATE
+  * fichier_pdf : VARCHAR(500)
+  * observation : TEXT
+  --
+  # id_demande : INTEGER <<CE>>
+  # id_genere_par : INTEGER <<CE>>
+  # id_livre_a : INTEGER <<CE>> (nullable)
+}
+
+note right of DECHARGE
+  **CORRECTION v3 :**
+  statut_signature supprimé.
+  Le statut est lu depuis
+  SIGNATURE_DECHARGE.statut.
+  Exposé en Python comme :
+
+  @property
+  def statut_signature(self):
+      if hasattr(self, 'signature'):
+          return self.signature.statut
+      return 'non_generee'
+
+  id_livre_a nullable :
+  NULL tant que non assigné.
+
+  **CORRECTION v4 — Template existant :**
+  Le template .xlsx officiel est fourni
+  par l'établissement (en-tête fixe,
+  logos université déjà en place).
+  openpyxl injecte uniquement :
+  - numero_decharge
+  - date_generation
+  - lignes du tableau
+    (description / quantite / n_inventaire)
+  LibreOffice headless → PDF
+  (tâche Celery queue 'pdf')
+end note
+
+entity "LIGNE_DECHARGE" as DECHARGE_LINE {
+  * id_ligne_decharge : INTEGER <<CP>>
+  --
+  * quantite : INTEGER
+  * type_ligne : ENUM
+  * observation : TEXT
+  --
+  # id_decharge : INTEGER <<CE>>
+  # id_ressource : INTEGER <<CE>>
+  # id_instance_ressource : INTEGER <<CE>> (nullable)
+}
+
+note right of DECHARGE_LINE
+  **CONTRAINTE CHECK (DB + App) :**
+  type_ligne = 'bien_inventaire'
+    → id_instance_ressource NOT NULL
+  type_ligne = 'consommable'
+    → id_instance_ressource IS NULL
+
+  PostgreSQL :
+  CHECK (
+    (type_ligne = 'bien_inventaire'
+      AND id_instance_ressource IS NOT NULL)
+    OR
+    (type_ligne = 'consommable'
+      AND id_instance_ressource IS NULL)
+  )
+
+  Django : Model.clean() + pre_save signal
+
+  **type_ligne :** bien_inventaire | consommable
+end note
+
+entity "SIGNATURE_DECHARGE" as SIGNATURE {
+  * id_signature : INTEGER <<CP>>
+  --
+  * date_signature : TIMESTAMP
+  * fichier_scan_signe : VARCHAR(500)
+  * observation_chef : TEXT
+  * statut : ENUM
+  * date_validation_systeme : TIMESTAMP
+  --
+  # id_decharge : INTEGER <<CE>> <<UNIQUE>>
+  # id_chef_service : INTEGER <<CE>>
+  # id_valide_par : INTEGER <<CE>> (nullable)
+}
+
+note right of SIGNATURE
+  id_valide_par nullable
+  (NULL jusqu'à validation gestionnaire).
+
+  **statut :**
+  en_attente | signe | valide | rejete
+
+  TRIGGER AFTER UPDATE (statut → valide) :
+  POUR CHAQUE LIGNE_DECHARGE :
+    SI bien_inventaire :
+      UPDATE INSTANCE_RESSOURCE
+        SET statut = 'en_service'
+      INSERT MOUVEMENT_STOCK (quantite=1)
+    SI consommable :
+      UPDATE STOCK
+        SET quantite_disponible -= quantite
+      INSERT MOUVEMENT_STOCK (quantite=X)
+  UPDATE DEMANDE SET statut = 'complete'
+
+  Implémenté via signal Django
+  post_save sur SIGNATURE_DECHARGE.
+end note
+
+' ══════════════════════════════════════════════════════════════════
+' RETOURS
+' ══════════════════════════════════════════════════════════════════
+
+entity "RETOUR_MATERIEL" as RETURN {
+  * id_retour : INTEGER <<CP>>
+  --
+  * date_retour : DATE
+  * motif_retour : ENUM
+  * decision : ENUM
+  * justification_decision : TEXT
+  * observation : TEXT
+  --
+  # id_ressource : INTEGER <<CE>>
+  # id_instance_ressource : INTEGER <<CE>> (nullable)
+  # id_retourne_par : INTEGER <<CE>>
+  # id_traite_par : INTEGER <<CE>>
+}
+
+note right of RETURN
+  **CORRECTION v3 :**
+  Champ etat supprimé.
+  Source de vérité unique = INSTANCE_RESSOURCE.etat.
+  Mis à jour par signal Django
+  post_save sur RETOUR_MATERIEL
+  quand decision est renseignée.
+
+  **motif_retour :**
+  panne | inutilise | endommage | autre
+
+  **decision :**
+  repare | non_repare | rebut | reaffecte
+
+  Après decision :
+  → UPDATE INSTANCE_RESSOURCE.etat
+  → INSERT MOUVEMENT_STOCK (retour | rebut)
+end note
+
+' ══════════════════════════════════════════════════════════════════
+' ALERTES & NOTIFICATIONS
+' ══════════════════════════════════════════════════════════════════
+
+entity "ALERTE_DELAI" as ALERT {
+  * id_alerte : INTEGER <<CP>>
+  --
+  * date_echeance : DATE
+  * niveau_alerte : ENUM
+  * date_alerte : TIMESTAMP
+  * penalite_applicable : BOOLEAN
+  * acquitte : BOOLEAN
+  --
+  # id_marche : INTEGER <<CE>>
+}
+
+note right of ALERT
+  **CORRECTION v3 :**
+  jours_restants supprimé
+  → valeur calculée :
+  jours_restants =
+    (date_echeance - date.today()).days
+
+  Exposé dans le serializer Django.
+  Le job Celery Beat (quotidien) :
+  - crée/met à jour ALERTE_DELAI
+  - flip acquitte si réceptionné
+  - envoie email si <= 7 jours
+
+  **niveau_alerte :**
+  info | warning | critique
+end note
+
+entity "NOTIFICATION" as NOTIF {
+  * id_notification : INTEGER <<CP>>
+  --
+  * type_notification : ENUM
+  * titre : VARCHAR(200)
+  * message : TEXT
+  * date_envoi : TIMESTAMP
+  * lu : BOOLEAN
+  * date_lecture : TIMESTAMP
+  * canal : ENUM
+  * id_content_type : INTEGER
+  * id_objet : INTEGER
+  --
+  # id_destinataire : INTEGER <<CE>>
+}
+
+note right of NOTIF
+  **CORRECTION v3 :**
+  type_objet + id_objet (texte manuel)
+  remplacés par id_content_type + id_objet
+  → même pattern GenericForeignKey Django
+  que MOUVEMENT_STOCK.
+  Cohérence polymorphique totale.
+
+  **type_notification :**
+  alerte_stock | alerte_delai
+  demande_soumise | decharge_prete
+  scan_recu | validation_requise
+
+  **canal :** web | email
+end note
+
+' ══════════════════════════════════════════════════════════════════
+' JOURNAL D'AUDIT
+' ══════════════════════════════════════════════════════════════════
+
+entity "JOURNAL_AUDIT" as AUDIT {
+  * id_log : INTEGER <<CP>>
+  --
+  * type_action : VARCHAR(100)
+  * table_cible : VARCHAR(100)
+  * id_enregistrement_cible : INTEGER
+  * ancienne_valeur : TEXT
+  * nouvelle_valeur : TEXT
+  * date_action : TIMESTAMP
+  * adresse_ip : VARCHAR(45)
+  * user_agent : VARCHAR(500)
+  --
+  # id_utilisateur : INTEGER <<CE>>
+}
+
+note right of AUDIT
+  Alimenté automatiquement par
+  un middleware Django ou des
+  signals post_save / post_delete
+  sur toutes les entités sensibles.
+  ancienne_valeur / nouvelle_valeur
+  sérialisés en JSON.
+end note
+
+' ══════════════════════════════════════════════════════════════════
+' RELATIONS
+' ══════════════════════════════════════════════════════════════════
+
+' Rôles & Permissions
+ROLE ||--o{ ROLE_PERM : "définit"
+PERMISSION ||--o{ ROLE_PERM : "attribuée via"
+
+' Utilisateurs
+USER }o--|| ROLE : "possède"
+USER }o--|| SERVICE : "appartient à"
+USER |o--o| SUPPLIER : "compte fournisseur (nullable, unique)"
+
+' Catégories
+CATEGORY ||--o{ SUBCATEGORY : "contient"
+CATEGORY ||--o{ RESOURCE : "classifie"
+SUBCATEGORY ||--o{ RESOURCE : "précise"
+
+' Ressources & Stock
+RESOURCE ||--o| STOCK : "a un stock (consommable)"
+RESOURCE ||--o{ RESOURCE_INSTANCE : "a des instances (bien inventaire)"
+RESOURCE_INSTANCE }o--|| SERVICE : "localisée dans"
+RESOURCE ||--o{ MOVEMENT : "suivi par type"
+RESOURCE_INSTANCE ||--o{ MOVEMENT : "suivi par instance"
+USER ||--o{ MOVEMENT : "effectue"
+
+' Achats & Pipeline IA
+SUPPLIER ||--o{ MARKET : "fournit (nullable donations)"
+USER ||--o{ MARKET : "créé par"
+MARKET ||--o{ MARKET_STEP : "suivi par étapes"
+USER ||--o{ MARKET_STEP : "modifiée par"
+MARKET ||--|| BC_EXCEL : "importé depuis"
+USER ||--o{ BC_EXCEL : "importé par"
+BC_EXCEL ||--o{ STAGING : "génère lignes IA"
+STAGING }o--o| CATEGORY : "catégorie suggérée (nullable)"
+STAGING }o--o| RESOURCE : "ressource liée (nullable)"
+MARKET ||--o{ LOT : "contient"
+LOT }o--|| RESOURCE : "référence"
+LOT ||--o{ RESOURCE_INSTANCE : "origine de"
+
+' Demandes
+USER ||--o{ REQUEST : "soumise par le chef"
+SERVICE ||--o{ REQUEST : "depuis le service"
+USER ||--o{ REQUEST : "validée par (nullable)"
+REQUEST ||--o{ REQUEST_LINE : "contient"
+REQUEST_LINE }o--|| RESOURCE : "demande"
+
+' Décharge
+REQUEST ||--o| DECHARGE : "génère"
+USER ||--o{ DECHARGE : "générée par"
+USER ||--o{ DECHARGE : "livrée à (nullable)"
+DECHARGE ||--o{ DECHARGE_LINE : "contient"
+DECHARGE_LINE }o--|| RESOURCE : "type de ressource"
+DECHARGE_LINE }o--o| RESOURCE_INSTANCE : "instance (nullable + CHECK)"
+DECHARGE ||--|| SIGNATURE : "signée via"
+USER ||--o{ SIGNATURE : "signée par le chef"
+USER ||--o{ SIGNATURE : "validée par (nullable)"
+
+' Retours
+RESOURCE ||--o{ RETURN : "type retourné"
+RESOURCE_INSTANCE ||--o{ RETURN : "instance retournée (nullable)"
+USER ||--o{ RETURN : "retourné par"
+USER ||--o{ RETURN : "traité par"
+
+' Alertes & Notifications
+MARKET ||--o{ ALERT : "déclenche"
+USER ||--o{ NOTIF : "reçoit"
+
+' Audit
+USER ||--o{ AUDIT : "effectué par"
+
+@enduml

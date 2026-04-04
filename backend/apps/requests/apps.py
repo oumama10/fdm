@@ -1,0 +1,11 @@
+from django.apps import AppConfig
+
+
+class RequestsConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.requests"
+    label = "requests"
+    verbose_name = "Demandes"
+
+    def ready(self):
+        pass

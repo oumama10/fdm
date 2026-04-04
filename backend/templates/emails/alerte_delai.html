@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Alerte Délai</title>
+</head>
+<body>
+    <h2>Alerte Délai pour le Marché {{ marche.reference|default:notification.objet_lie.reference }}</h2>
+    <p>
+        {% if jours_restants is not None %}
+            Il reste <strong>{{ jours_restants }}</strong> jour(s) avant la date limite de livraison.
+        {% else %}
+            La date limite de livraison est dépassée.
+        {% endif %}
+    </p>
+    <p>
+        Marché : <strong>{{ marche.reference|default:notification.objet_lie.reference }}</strong><br>
+        Date limite : <strong>{{ marche.date_livraison_prevue|default:notification.objet_lie.date_livraison_prevue }}</strong>
+    </p>
+    <p>
+        Merci de prendre les mesures nécessaires.<br>
+        <em>Faculté de Médecine - FMPDF</em>
+    </p>
+</body>
+</html>
