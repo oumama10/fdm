@@ -13,6 +13,7 @@ const StockPage = React.lazy(() => import('./pages/gestionnaire/StockPage'));
 const MouvementsPage = React.lazy(() => import('./pages/gestionnaire/MouvementsPage'));
 const MarchesListPage = React.lazy(() => import('./pages/shared/MarchesListPage'));
 const MarcheDetailPage = React.lazy(() => import('./pages/shared/MarcheDetailPage'));
+const MarcheManualCreatePage = React.lazy(() => import('./pages/shared/MarcheManualCreatePage'));
 const StagingReviewPage = React.lazy(() => import('./pages/gestionnaire/StagingReviewPage'));
 const DemandesListPage = React.lazy(() => import('./pages/gestionnaire/DemandesListPage'));
 const DemandeDetailPage = React.lazy(() => import('./pages/gestionnaire/DemandeDetailPage'));
@@ -94,6 +95,14 @@ export default function App() {
             element={
               <ProtectedRoute requiredRole="gestionnaire_magasin">
                 <MarcheDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/gestionnaire/marches/nouveau"
+            element={
+              <ProtectedRoute requiredRole="gestionnaire_magasin">
+                <MarcheManualCreatePage />
               </ProtectedRoute>
             }
           />
@@ -238,6 +247,14 @@ export default function App() {
             element={
               <ProtectedRoute requiredRole="service_financiere">
                 <MarcheDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/financiere/marches/nouveau"
+            element={
+              <ProtectedRoute requiredRole="service_financiere">
+                <MarcheManualCreatePage />
               </ProtectedRoute>
             }
           />

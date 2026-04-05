@@ -145,14 +145,30 @@ class ImportExcelBC(models.Model):
         ("marche", "marche"),
         ("donation", "donation"),
     ]
+    FILE_TYPE_CHOICES = [
+        ("xlsx", "Excel"),
+        ("pdf", "PDF"),
+    ]
 
     id_import = models.AutoField(primary_key=True)
     fichier_excel_original = models.FileField(upload_to="marches/uploads/")
+    titre_fichier = models.CharField(max_length=255, blank=True, default="")
     date_import = models.DateTimeField(auto_now_add=True)
+    reference_document = models.CharField(max_length=150, blank=True, default="")
+    fournisseur_denomination = models.CharField(max_length=255, blank=True, default="")
+    fournisseur_telephone = models.CharField(max_length=50, blank=True, default="")
+    fournisseur_email = models.EmailField(blank=True, default="")
+    fournisseur_adresse = models.TextField(blank=True, default="")
+    delai_execution = models.CharField(max_length=255, blank=True, default="")
     statut_import = models.CharField(
         max_length=20,
         choices=STATUT_IMPORT_CHOICES,
         default="brouillon",
+    )
+    file_type = models.CharField(
+        max_length=10,
+        choices=FILE_TYPE_CHOICES,
+        default="xlsx",
     )
     source_type = models.CharField(max_length=20, choices=SOURCE_TYPE_CHOICES)
     observations = models.TextField(blank=True)
@@ -191,6 +207,7 @@ class StagingItem(models.Model):
 
     id_staging = models.AutoField(primary_key=True)
     designation_brute = models.CharField(max_length=500)
+    description = models.TextField(blank=True, default="")
     designation_normalisee = models.CharField(max_length=255, blank=True)
     quantite = models.IntegerField(default=0)
     type_detecte = models.CharField(max_length=20, choices=TYPE_DETECTE_CHOICES, blank=True)
@@ -203,6 +220,19 @@ class StagingItem(models.Model):
     )
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="en_attente")
     correction_gestionnaire = models.TextField(blank=True)
+    prix_unitaire_ht = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    prix_total_ht = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    unite = models.CharField(max_length=20, blank=True, default="U")
     id_import = models.ForeignKey(
         ImportExcelBC,
         on_delete=models.CASCADE,

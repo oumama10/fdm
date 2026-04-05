@@ -20,13 +20,13 @@ class MarcheBCAdmin(admin.ModelAdmin):
 
 @admin.register(ImportExcelBC)
 class ImportExcelBCAdmin(admin.ModelAdmin):
-    list_display = ["id_import", "id_marche", "statut_import", "source_type", "date_import"]
+    list_display = ["id_import", "titre_fichier", "id_marche", "statut_import", "source_type", "date_import"]
     list_filter = ["statut_import", "source_type"]
 
 
 @admin.register(StagingItem)
 class StagingItemAdmin(admin.ModelAdmin):
-    list_display = ["designation_brute", "designation_normalisee", "quantite", "confiance_ia", "statut"]
+    list_display = ["designation_brute", "description", "designation_normalisee", "quantite", "confiance_ia", "statut"]
     list_filter = ["statut", "type_detecte"]
     search_fields = ["designation_brute", "designation_normalisee"]
 

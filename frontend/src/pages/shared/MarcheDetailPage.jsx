@@ -1,47 +1,40 @@
-import { useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 
 import {
-  getEtapes,
-  getLotsByMarche,
+  getImports,
   getMarcheDetail,
-  updateEtape,
+  getStagingItems,
 } from '../../api/procurement';
-import ImportExcelModal from '../gestionnaire/ImportExcelModal';
-import MarcheTimeline from '../../components/procurement/MarcheTimeline';
-import { useAuthStore } from '../../store/authStore';
+import PageBackButton from '../../components/ui/PageBackButton';
 
-function StatusBadge({ statut }) {
-  const tone =
-    statut === 'receptionne_et_stocke'
-      ? { bg: '#bbf7d0', color: '#14532d' }
-      : statut === 'non_conforme'
-      ? { bg: '#fecaca', color: '#991b1b' }
-      : { bg: '#dbeafe', color: '#1e3a8a' };
+function pickValue(obj, keys, fallback = null) {
+  if (!obj) return fallback;
+  for (const key of keys) {
+    const value = obj?.[key];
+    if (value !== undefined && value !== null && `${value}`.trim() !== '') {
+      return value;
+    }
+  }
+  return fallback;
+}
 
-  return (
-    <span
-      style={{
-        borderRadius: 999,
-        padding: '4px 10px',
-        fontSize: 12,
-        fontWeight: 600,
-        background: tone.bg,
-        color: tone.color,
-      }}
-    >
-      {(statut || '').replaceAll('_', ' ')}
-    </span>
-  );
+function formatMoney(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const numericValue = Number(value);
+  if (Number.isNaN(numericValue)) return '—';
+  return new Intl.NumberFormat('fr-FR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(numericValue);
 }
 
 export default function MarcheDetailPage() {
   const { id } = useParams();
-  const queryClient = useQueryClient();
-  const role = useAuthStore((state) => state.user?.id_role?.nom_role || state.user?.role);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [lastImport, setLastImport] = useState(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const basePrefix = location.pathname.startsWith('/financiere') ? '/financiere' : '/gestionnaire';
 
   const marcheQuery = useQuery({
     queryKey: ['procurement', 'marche', id],
@@ -49,36 +42,54 @@ export default function MarcheDetailPage() {
     staleTime: 30000,
   });
 
-  const etapesQuery = useQuery({
-    queryKey: ['procurement', 'etapes', id],
-    queryFn: () => getEtapes(id),
-    staleTime: 30000,
-  });
-
-  const lotsQuery = useQuery({
-    queryKey: ['procurement', 'lots', id],
-    queryFn: () => getLotsByMarche(id),
-    staleTime: 30000,
-  });
-
-  const updateEtapeMutation = useMutation({
-    mutationFn: ({ id_etape, statut }) => updateEtape(id_etape, { statut }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['procurement', 'etapes', id] });
-    },
-  });
-
   const marche = marcheQuery.data?.data;
-  const etapes = etapesQuery.data?.data || marche?.etapes || [];
-  const lots = lotsQuery.data?.data || [];
+  const marcheId = Number(id);
 
-  const canEditTimeline = role === 'gestionnaire_magasin';
-  const canImportExcel = role === 'service_financiere';
+  const importsQuery = useQuery({
+    queryKey: ['procurement', 'imports', 'by-marche', marcheId],
+    queryFn: () => getImports(),
+    staleTime: 30000,
+  });
 
-  const importStatusLabel = useMemo(() => {
-    if (!lastImport) return 'Aucun import détecté dans cette session.';
-    return `Import #${lastImport.id_import} — statut: ${lastImport.statut_import}`;
-  }, [lastImport]);
+  const relatedImportFromList = useMemo(() => {
+    const payload = importsQuery.data?.data;
+    const rows = Array.isArray(payload) ? payload : (Array.isArray(payload?.results) ? payload.results : []);
+    return rows.find((row) => Number(pickValue(row, ['id_marche', 'idMarche'], 0)) === marcheId) || null;
+  }, [importsQuery.data, marcheId]);
+
+  const importExcel = marche?.import_excel || marche?.importExcel || relatedImportFromList || null;
+  const importId = Number(pickValue(importExcel, ['id_import', 'idImport'], 0)) || null;
+
+  const stagingQuery = useQuery({
+    queryKey: ['procurement', 'staging', 'marche', importId],
+    queryFn: () => getStagingItems(importId),
+    enabled: Boolean(importId),
+    staleTime: 30000,
+  });
+
+  const stagingItems = useMemo(() => {
+    const payload = stagingQuery.data?.data;
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.results)) return payload.results;
+    return [];
+  }, [stagingQuery.data]);
+
+  const normalizedRows = useMemo(
+    () =>
+      stagingItems.map((item, index) => ({
+        key: pickValue(item, ['id_staging', 'idStaging', 'id'], `row-${index}`),
+        designation: pickValue(
+          item,
+          ['designation_brute', 'designationBrute', 'designation_normalisee', 'designationNormalisee', 'designation'],
+          '—'
+        ),
+        description: pickValue(item, ['description'], '—'),
+        quantite: pickValue(item, ['quantite', 'quantity'], '—'),
+        prixUnitaire: pickValue(item, ['prix_unitaire_ht', 'prixUnitaireHt'], null),
+        prixTotal: pickValue(item, ['prix_total_ht', 'prixTotalHt'], null),
+      })),
+    [stagingItems]
+  );
 
   if (marcheQuery.isLoading) {
     return <div style={{ height: 220, borderRadius: 10, background: '#f3f4f6' }} />;
@@ -88,91 +99,76 @@ export default function MarcheDetailPage() {
     return <div style={{ color: '#b91c1c' }}>Marché introuvable.</div>;
   }
 
+  const hideExtractedAfterSubmit = ['receptionne_et_stocke', 'non_conforme'].includes(marche?.statut);
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
-      <div
-        style={{
-          border: '1px solid #e5e7eb',
-          borderRadius: 12,
-          padding: 14,
-          background: '#fff',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12,
-        }}
-      >
+      <div style={pageHeaderStyle}>
+        <PageBackButton to={`${basePrefix}/marches`} label="Marchés" hint="Revenir à la liste" />
         <div>
-          <h1 style={{ margin: 0 }}>{marche.reference}</h1>
-          <div style={{ color: '#374151', marginTop: 4 }}>
-            Type: <strong>{marche.type_acquisition}</strong>
-            {' · '}
-            Fournisseur: <strong>{marche.fournisseur?.nom_societe || '—'}</strong>
+          <h1 style={{ margin: 0 }}>Détail du marché</h1>
+          <div style={{ marginTop: 4, color: '#64748b', fontSize: 13 }}>
+            {marche?.statut ? `Statut actuel : ${marche.statut}` : 'Vue détaillée du marché et de ses données extraites.'}
           </div>
         </div>
-        <StatusBadge statut={marche.statut} />
       </div>
 
-      <section style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>Timeline des étapes</h3>
-        <MarcheTimeline
-          etapes={etapes}
-          canEdit={canEditTimeline}
-          onChangeStatut={(step, statut) =>
-            updateEtapeMutation.mutate({ id_etape: step.id_etape, statut })
-          }
-        />
-      </section>
+      {hideExtractedAfterSubmit ? (
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Informations extraites</h3>
+          <div style={{ color: '#6b7280' }}>
+            Ces données ont déjà été soumises. Elles ne sont plus affichées dans cette étape.
+          </div>
+        </section>
+      ) : importExcel ? (
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Informations extraites</h3>
 
-      <section style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>Lots article</h3>
-        {lotsQuery.isLoading ? (
-          <div style={{ height: 120, borderRadius: 8, background: '#f3f4f6' }} />
-        ) : lots.length === 0 ? (
-          <div style={{ color: '#6b7280' }}>Aucun lot.</div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                <th style={thStyle}>N° lot</th>
-                <th style={thStyle}>Désignation</th>
-                <th style={thStyle}>Qté commandée</th>
-                <th style={thStyle}>Qté reçue</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lots.map((lot) => (
-                <tr key={lot.id_lot} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={tdStyle}>{lot.numero_lot}</td>
-                  <td style={tdStyle}>{lot.designation}</td>
-                  <td style={tdStyle}>{lot.quantite_commandee}</td>
-                  <td style={tdStyle}>{lot.quantite_recue}</td>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 12, fontSize: 14 }}>
+            <div><strong>Titre:</strong> {pickValue(importExcel, ['titre_fichier', 'titreFichier'], '—')}</div>
+            <div><strong>Référence:</strong> {pickValue(importExcel, ['reference_document', 'referenceDocument', 'reference'], '—')}</div>
+            <div><strong>Fournisseur:</strong> {pickValue(importExcel, ['fournisseur_denomination', 'fournisseurDenomination'], '—')}</div>
+            <div><strong>Téléphone:</strong> {pickValue(importExcel, ['fournisseur_telephone', 'fournisseurTelephone'], '—')}</div>
+            <div><strong>Email:</strong> {pickValue(importExcel, ['fournisseur_email', 'fournisseurEmail'], '—')}</div>
+            <div><strong>Adresse:</strong> {pickValue(importExcel, ['fournisseur_adresse', 'fournisseurAdresse'], '—')}</div>
+            <div><strong>Délai / livraison:</strong> {pickValue(importExcel, ['delai_execution', 'delaiExecution'], '—')}</div>
+          </div>
+
+          {stagingQuery.isLoading ? (
+            <div style={{ color: '#6b7280' }}>Chargement des lignes extraites...</div>
+          ) : normalizedRows.length === 0 ? (
+            <div style={{ color: '#6b7280' }}>Aucune ligne extraite.</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+              <thead>
+                <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
+                  <th style={thStyle}>Désignation</th>
+                  <th style={thStyle}>Description</th>
+                  <th style={thStyle}>Quantité</th>
+                  <th style={thStyle}>PU HT</th>
+                  <th style={thStyle}>PT HT</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section style={sectionStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={sectionTitleStyle}>Import Excel</h3>
-          {canImportExcel ? (
-            <button style={primaryButton} onClick={() => setShowImportModal(true)}>
-              Importer Excel
-            </button>
-          ) : null}
-        </div>
-        <div style={{ fontSize: 14, color: '#374151' }}>{importStatusLabel}</div>
-      </section>
-
-      {showImportModal ? (
-        <ImportExcelModal
-          marcheId={marche.id_marche}
-          onClose={() => setShowImportModal(false)}
-          onDone={(data) => setLastImport(data)}
-        />
-      ) : null}
+              </thead>
+              <tbody>
+                {normalizedRows.map((item) => (
+                  <tr key={item.key} style={{ borderTop: '1px solid #f3f4f6' }}>
+                    <td style={tdStyle}>{item.designation}</td>
+                    <td style={tdStyle}>{item.description}</td>
+                    <td style={tdStyle}>{item.quantite}</td>
+                    <td style={tdStyle}>{formatMoney(item.prixUnitaire)}</td>
+                    <td style={tdStyle}>{formatMoney(item.prixTotal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      ) : (
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Informations extraites</h3>
+          <div style={{ color: '#6b7280' }}>Aucune information extraite pour ce marché.</div>
+        </section>
+      )}
     </div>
   );
 }
@@ -189,13 +185,11 @@ const sectionTitleStyle = {
   marginBottom: 10,
 };
 
-const primaryButton = {
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#111827',
-  color: '#fff',
-  cursor: 'pointer',
+const pageHeaderStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 14,
+  padding: '4px 0',
 };
 
 const thStyle = { padding: 8, fontWeight: 600 };

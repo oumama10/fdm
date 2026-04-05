@@ -1,6 +1,9 @@
 import logging
+import os
+from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.base import ContentFile
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -42,16 +45,51 @@ def _trigger_extract(import_id: int) -> None:
     If broker/backend is unavailable (e.g. Redis down in local dev),
     fallback to synchronous execution so upload endpoint remains functional.
     """
-    from .tasks import extract_excel_items  # noqa: PLC0415
+    from apps.procurement.models import ImportExcelBC  # noqa: PLC0415
+    from .tasks import extract_excel_items, extract_pdf_items  # noqa: PLC0415
+
+    logger.info("[IMPORT %s] Trigger extract START", import_id)
 
     try:
-        extract_excel_items.apply_async(args=[import_id], ignore_result=True)
+        import_obj = ImportExcelBC.objects.get(id_import=import_id)
+    except ImportExcelBC.DoesNotExist:
+        logger.error("[IMPORT %s] Import object not found", import_id)
+        return
+
+    file_path = ""
+    try:
+        file_path = import_obj.fichier_excel_original.path
     except Exception:
-        logger.exception(
-            "Could not enqueue extract_excel_items for import %s; falling back to sync execution",
-            import_id,
-        )
-        extract_excel_items.run(import_id, retry_enabled=False)
+        file_path = str(import_obj.fichier_excel_original)
+
+    logger.info(
+        "[IMPORT %s] File type=%s path=%s",
+        import_id,
+        import_obj.file_type,
+        file_path,
+    )
+
+    try:
+        if import_obj.file_type == "pdf":
+            result = extract_pdf_items.apply_async(
+                args=[import_id],
+                queue="ocr",
+                ignore_result=True,
+            )
+        else:
+            result = extract_excel_items.apply_async(
+                args=[import_id],
+                queue="ocr",
+                ignore_result=True,
+            )
+        logger.info("[IMPORT %s] Task queued: %s", import_id, result.id)
+    except Exception as exc:
+        logger.error("[IMPORT %s] Celery failure: %s", import_id, exc)
+        logger.warning("[IMPORT %s] Falling back to sync execution", import_id)
+        if import_obj.file_type == "pdf":
+            extract_pdf_items.run(import_id, retry_enabled=False)
+        else:
+            extract_excel_items.run(import_id, retry_enabled=False)
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +121,7 @@ class MarcheBCViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = MarcheBC.objects.select_related(
-            "id_fournisseur", "id_cree_par"
+            "id_fournisseur", "id_cree_par", "import_excel"
         ).prefetch_related("etapes")
 
         user = self.request.user
@@ -159,6 +197,7 @@ class MarcheEtapeViewSet(viewsets.ModelViewSet):
 
 
 class ImportExcelBCViewSet(
+    mixins.ListModelMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
@@ -174,13 +213,20 @@ class ImportExcelBCViewSet(
 
     def get_permissions(self):
         if self.action == "envoyer_gestionnaire":
-            return [IsServiceFinanciere()]
+            return [(IsServiceFinanciere | IsGestionnaireOrAdmin)()]
         return super().get_permissions()
 
     def get_serializer_class(self):
-        if self.action == "retrieve":
+        if self.action in ("list", "retrieve"):
             return ImportExcelBCStatusSerializer
         return ImportExcelBCSerializer
+
+    def get_queryset(self):
+        return (
+            ImportExcelBC.objects.select_related("id_marche", "id_importe_par")
+            .prefetch_related("staging_items")
+            .order_by("-date_import")
+        )
 
     def perform_create(self, serializer):
         instance = serializer.save(id_importe_par=self.request.user)
@@ -270,6 +316,17 @@ class DirectImportView(APIView):
         if not fichier:
             return Response({"error": "Fichier manquant"}, status=400)
 
+        filename = (fichier.name or "").lower()
+        if filename.endswith(".pdf"):
+            file_type = "pdf"
+        elif filename.endswith(".xlsx"):
+            file_type = "xlsx"
+        else:
+            return Response(
+                {"error": "Format non supporté. Utilisez .xlsx ou .pdf"},
+                status=400,
+            )
+
         # ImportExcelBC expects: bc | marche | donation
         source_type_import = (
             "bc" if source_type_raw == "bon_commande" else source_type_raw
@@ -295,6 +352,8 @@ class DirectImportView(APIView):
 
         import_obj = ImportExcelBC.objects.create(
             fichier_excel_original=fichier,
+            titre_fichier=os.path.splitext(fichier.name)[0][:255],
+            file_type=file_type,
             source_type=source_type_import,
             statut_import="en_revision",
             id_marche=marche,
@@ -308,6 +367,140 @@ class DirectImportView(APIView):
                 "id_import": import_obj.id_import,
                 "id_marche": marche.id_marche,
                 "statut_import": import_obj.statut_import,
+                "file_type": import_obj.file_type,
+            },
+            status=201,
+        )
+
+
+class ManualImportView(APIView):
+    def get_permissions(self):
+        return [(IsServiceFinanciere | IsGestionnaireOrAdmin)()]
+
+    def post(self, request):
+        data = request.data or {}
+
+        type_acquisition = data.get("type_acquisition") or "bon_commande"
+        if type_acquisition not in ("marche", "bon_commande", "donation"):
+            type_acquisition = "bon_commande"
+
+        source_type = "bc" if type_acquisition == "bon_commande" else type_acquisition
+        if source_type not in ("bc", "marche", "donation"):
+            source_type = "bc"
+
+        titre_fichier = (data.get("titre_fichier") or "").strip()[:255]
+        reference_document = (data.get("reference_document") or "").strip()[:150]
+        fournisseur_denomination = (data.get("fournisseur_denomination") or "").strip()[:255]
+        fournisseur_telephone = (data.get("fournisseur_telephone") or "").strip()[:50]
+        fournisseur_email = (data.get("fournisseur_email") or "").strip()
+        fournisseur_adresse = (data.get("fournisseur_adresse") or "").strip()
+        delai_execution = (data.get("delai_execution") or "").strip()[:255]
+
+        lignes = data.get("lignes") or []
+        if not isinstance(lignes, list) or len(lignes) == 0:
+            return Response({"detail": "Ajoutez au moins une ligne d'article."}, status=400)
+
+        # Build/attach supplier when possible so list pages display supplier directly.
+        fournisseur_obj = None
+        if fournisseur_denomination:
+            from apps.users.models import Fournisseur  # noqa: PLC0415
+
+            fournisseur_obj = Fournisseur.objects.filter(
+                nom_societe__iexact=fournisseur_denomination
+            ).first()
+            if not fournisseur_obj:
+                fournisseur_obj = Fournisseur.objects.create(
+                    nom_societe=fournisseur_denomination,
+                    nom_responsable=fournisseur_denomination,
+                    email=fournisseur_email or "manual@placeholder.local",
+                    telephone=fournisseur_telephone,
+                    adresse=fournisseur_adresse,
+                )
+
+        marche_reference = reference_document or f"MANUAL-{timezone.now().strftime('%Y%m%d%H%M%S%f')}"
+        marche = MarcheBC.objects.create(
+            reference=marche_reference,
+            type_acquisition=type_acquisition,
+            statut="en_attente_livraison",
+            id_cree_par=request.user,
+            id_fournisseur=fournisseur_obj,
+        )
+
+        import_obj = ImportExcelBC(
+            titre_fichier=titre_fichier or marche_reference,
+            reference_document=reference_document,
+            fournisseur_denomination=fournisseur_denomination,
+            fournisseur_telephone=fournisseur_telephone,
+            fournisseur_email=fournisseur_email,
+            fournisseur_adresse=fournisseur_adresse,
+            delai_execution=delai_execution,
+            file_type="xlsx",
+            source_type=source_type,
+            statut_import="brouillon",
+            id_marche=marche,
+            id_importe_par=request.user,
+        )
+
+        fake_name = f"manual_{timezone.now().strftime('%Y%m%d%H%M%S%f')}.txt"
+        import_obj.fichier_excel_original.save(
+            fake_name,
+            ContentFile("Manual import entry"),
+            save=False,
+        )
+        import_obj.save()
+
+        staging_items = []
+        for ligne in lignes:
+            if not isinstance(ligne, dict):
+                continue
+
+            designation = str(ligne.get("designation") or "").strip()
+            if not designation:
+                continue
+
+            description = str(ligne.get("description") or "").strip()
+            unite = str(ligne.get("unite") or "U").strip()[:20]
+
+            try:
+                quantite = max(1, int(float(str(ligne.get("quantite") or 1).replace(",", "."))))
+            except Exception:
+                quantite = 1
+
+            def _to_decimal(value):
+                if value in (None, ""):
+                    return None
+                try:
+                    return Decimal(str(value).replace(" ", "").replace(",", ".")).quantize(Decimal("0.01"))
+                except Exception:
+                    return None
+
+            staging_items.append(
+                StagingItem(
+                    id_import=import_obj,
+                    designation_brute=designation[:500],
+                    description=description[:4000],
+                    designation_normalisee=designation[:255],
+                    quantite=quantite,
+                    unite=unite or "U",
+                    prix_unitaire_ht=_to_decimal(ligne.get("prix_unitaire_ht")),
+                    prix_total_ht=_to_decimal(ligne.get("prix_total_ht")),
+                    confiance_ia=Decimal("1.00"),
+                    statut="en_attente",
+                )
+            )
+
+        if not staging_items:
+            import_obj.delete()
+            marche.delete()
+            return Response({"detail": "Les lignes sont invalides."}, status=400)
+
+        StagingItem.objects.bulk_create(staging_items, batch_size=200)
+
+        return Response(
+            {
+                "id_marche": marche.id_marche,
+                "id_import": import_obj.id_import,
+                "detail": "Import manuel créé.",
             },
             status=201,
         )

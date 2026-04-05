@@ -7,6 +7,7 @@ from .views import (
     LotArticleViewSet,
     MarcheBCViewSet,
     MarcheEtapeViewSet,
+    ManualImportView,
     StagingItemViewSet,
 )
 
@@ -19,4 +20,5 @@ router.register("lots", LotArticleViewSet, basename="lot-article")
 
 urlpatterns = [
     path("import/direct/", DirectImportView.as_view(), name="import-direct"),
+    path("import/manual/", ManualImportView.as_view(), name="import-manual"),
 ] + router.urls

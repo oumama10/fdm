@@ -62,6 +62,7 @@ class MarcheEtapeSerializer(serializers.ModelSerializer):
 class MarcheBCSerializer(serializers.ModelSerializer):
     fournisseur = _FournisseurBriefSerializer(source="id_fournisseur", read_only=True)
     etapes = MarcheEtapeSerializer(many=True, read_only=True)
+    import_excel = serializers.SerializerMethodField()
 
     class Meta:
         model = MarcheBC
@@ -78,6 +79,7 @@ class MarcheBCSerializer(serializers.ModelSerializer):
             "fournisseur",
             "id_cree_par",
             "etapes",
+            "import_excel",
         ]
         read_only_fields = [
             "id_marche",
@@ -86,6 +88,24 @@ class MarcheBCSerializer(serializers.ModelSerializer):
             "date_livraison_prevue",
             "etapes",
         ]
+
+    def get_import_excel(self, obj):
+        import_obj = getattr(obj, "import_excel", None)
+        if not import_obj:
+            return None
+        return {
+            "id_import": import_obj.id_import,
+            "titre_fichier": import_obj.titre_fichier,
+            "statut_import": import_obj.statut_import,
+            "file_type": import_obj.file_type,
+            "reference_document": import_obj.reference_document,
+            "fournisseur_denomination": import_obj.fournisseur_denomination,
+            "fournisseur_telephone": import_obj.fournisseur_telephone,
+            "fournisseur_email": import_obj.fournisseur_email,
+            "fournisseur_adresse": import_obj.fournisseur_adresse,
+            "delai_execution": import_obj.delai_execution,
+            "observations": import_obj.observations,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -101,8 +121,16 @@ class ImportExcelBCSerializer(serializers.ModelSerializer):
         fields = [
             "id_import",
             "fichier_excel_original",
+            "titre_fichier",
             "date_import",
+            "reference_document",
+            "fournisseur_denomination",
+            "fournisseur_telephone",
+            "fournisseur_email",
+            "fournisseur_adresse",
+            "delai_execution",
             "statut_import",
+            "file_type",
             "source_type",
             "observations",
             "id_marche",
@@ -124,7 +152,15 @@ class ImportExcelBCStatusSerializer(serializers.ModelSerializer):
         fields = [
             "id_import",
             "id_marche",
+            "titre_fichier",
+            "reference_document",
+            "fournisseur_denomination",
+            "fournisseur_telephone",
+            "fournisseur_email",
+            "fournisseur_adresse",
+            "delai_execution",
             "statut_import",
+            "file_type",
             "observations",
             "staging_items_count",
             "staging_items_approved_count",
@@ -163,11 +199,15 @@ class StagingItemSerializer(serializers.ModelSerializer):
         fields = [
             "id_staging",
             "designation_brute",
+            "description",
             "designation_normalisee",
             "quantite",
             "confiance_ia",
             "statut",
             "correction_gestionnaire",
+            "prix_unitaire_ht",
+            "prix_total_ht",
+            "unite",
             "id_import",
             "id_categorie_suggeree",
             "id_ressource_liee",

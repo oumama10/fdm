@@ -11,6 +11,8 @@ export const uploadExcelDirect = (formData) =>
 	apiClient.post('/procurement/import/direct/', formData, {
 		headers: { 'Content-Type': 'multipart/form-data' },
 	});
+export const createManualImport = (data) => apiClient.post('/procurement/import/manual/', data);
+export const getImports = () => apiClient.get('/procurement/import/');
 export const getImportById = (importId) => apiClient.get(`/procurement/import/${importId}/`);
 export const sendImportToGestionnaire = (importId) =>
 	apiClient.post(`/procurement/import/${importId}/envoyer-gestionnaire/`);

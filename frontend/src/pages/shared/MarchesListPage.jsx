@@ -1,9 +1,20 @@
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
-import { createMarche, getMarches } from '../../api/procurement';
+import { getMarches } from '../../api/procurement';
 import { useAuthStore } from '../../store/authStore';
+
+function pickValue(obj, keys, fallback = '') {
+  if (!obj) return fallback;
+  for (const key of keys) {
+    const value = obj?.[key];
+    if (value !== undefined && value !== null && `${value}`.trim() !== '') {
+      return value;
+    }
+  }
+  return fallback;
+}
 
 function daysRemaining(dateString) {
   if (!dateString) return null;
@@ -22,87 +33,11 @@ function DelaiCell({ value }) {
   return <span style={{ color, fontWeight: 600 }}>{value} j</span>;
 }
 
-function MarcheCreateModal({ onClose }) {
-  const queryClient = useQueryClient();
-  const [form, setForm] = useState({
-    reference: '',
-    type_acquisition: 'marche',
-    id_fournisseur: '',
-  });
-
-  const createMutation = useMutation({
-    mutationFn: createMarche,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['procurement', 'marches'] });
-      onClose();
-    },
-  });
-
-  return (
-    <div style={backdropStyle} onClick={onClose}>
-      <div style={modalStyle} onClick={(event) => event.stopPropagation()}>
-        <h3 style={{ marginTop: 0 }}>Nouveau Marché</h3>
-        <div style={{ display: 'grid', gap: 10 }}>
-          <label style={labelStyle}>
-            Référence
-            <input
-              style={inputStyle}
-              value={form.reference}
-              onChange={(e) => setForm((prev) => ({ ...prev, reference: e.target.value }))}
-            />
-          </label>
-
-          <label style={labelStyle}>
-            Type acquisition
-            <select
-              style={inputStyle}
-              value={form.type_acquisition}
-              onChange={(e) => setForm((prev) => ({ ...prev, type_acquisition: e.target.value }))}
-            >
-              <option value="marche">marche</option>
-              <option value="bon_commande">bon_commande</option>
-              <option value="donation">donation</option>
-            </select>
-          </label>
-
-          <label style={labelStyle}>
-            ID fournisseur (optionnel)
-            <input
-              style={inputStyle}
-              value={form.id_fournisseur}
-              onChange={(e) => setForm((prev) => ({ ...prev, id_fournisseur: e.target.value }))}
-              placeholder="ex: 1"
-            />
-          </label>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-          <button style={secondaryButton} onClick={onClose}>Annuler</button>
-          <button
-            style={primaryButton}
-            onClick={() =>
-              createMutation.mutate({
-                reference: form.reference,
-                type_acquisition: form.type_acquisition,
-                ...(form.id_fournisseur ? { id_fournisseur: Number(form.id_fournisseur) } : {}),
-              })
-            }
-            disabled={createMutation.isPending || !form.reference.trim()}
-          >
-            {createMutation.isPending ? 'Création...' : 'Créer'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function MarchesListPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
 
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [filterType, setFilterType] = useState('');
   const [filterStatut, setFilterStatut] = useState('');
   const [filterFournisseur, setFilterFournisseur] = useState('');
@@ -127,6 +62,7 @@ export default function MarchesListPage() {
       date_livraison_prevue: m.date_livraison_prevue ?? m.dateLivraisonPrevue,
       date_creation: m.date_creation ?? m.dateCreation,
       fournisseur: m.fournisseur ?? m.id_fournisseur ?? m.idFournisseur,
+      import_excel: m.import_excel ?? m.importExcel ?? null,
     }));
     return normalized
       .filter((m) => (filterType ? m.type_acquisition === filterType : true))
@@ -134,6 +70,22 @@ export default function MarchesListPage() {
       .filter((m) => (filterFournisseur ? String(m.id_fournisseur || '') === filterFournisseur : true))
       .map((m) => ({ ...m, delai_restant: daysRemaining(m.date_livraison_prevue) }));
   }, [marchesQuery.data?.data, filterType, filterStatut, filterFournisseur]);
+
+  const marchesWithExtractedInfo = useMemo(
+    () =>
+      marches.map((m) => ({
+        ...m,
+        titre_extrait:
+          pickValue(m.import_excel, ['titre_fichier', 'titreFichier'], '') ||
+          pickValue(m.import_excel, ['reference_document', 'referenceDocument', 'reference'], '') ||
+          m.reference,
+        fournisseur_extrait:
+          pickValue(m.import_excel, ['fournisseur_denomination', 'fournisseurDenomination'], '') ||
+          m.fournisseur?.nom_societe ||
+          '—',
+      })),
+    [marches]
+  );
 
   const fournisseurs = useMemo(() => {
     const map = new Map();
@@ -152,7 +104,7 @@ export default function MarchesListPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1 style={{ margin: 0 }}>Marchés</h1>
         {canCreate ? (
-          <button style={primaryButton} onClick={() => setShowCreateModal(true)}>
+          <button style={primaryButton} onClick={() => navigate(`${basePrefix}/marches/nouveau`)}>
             Nouveau Marché
           </button>
         ) : null}
@@ -194,7 +146,7 @@ export default function MarchesListPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                <th style={thStyle}>Référence</th>
+                <th style={thStyle}>Titre</th>
                 <th style={thStyle}>Type</th>
                 <th style={thStyle}>Fournisseur</th>
                 <th style={thStyle}>Statut</th>
@@ -203,12 +155,12 @@ export default function MarchesListPage() {
               </tr>
             </thead>
             <tbody>
-              {marches.length === 0 ? (
+              {marchesWithExtractedInfo.length === 0 ? (
                 <tr>
                   <td colSpan={6} style={{ padding: 16, color: '#6b7280' }}>Aucun marché trouvé.</td>
                 </tr>
               ) : (
-                marches.map((m) => (
+                marchesWithExtractedInfo.map((m) => (
                   <tr
                     key={m.id_marche}
                     style={{ cursor: 'pointer', borderTop: '1px solid #f3f4f6' }}
@@ -217,9 +169,9 @@ export default function MarchesListPage() {
                       navigate(`${basePrefix}/marches/${m.id_marche}`);
                     }}
                   >
-                    <td style={tdStyle}>{m.reference}</td>
+                    <td style={tdStyle}>{m.titre_extrait}</td>
                     <td style={tdStyle}>{m.type_acquisition}</td>
-                    <td style={tdStyle}>{m.fournisseur?.nom_societe || '—'}</td>
+                    <td style={tdStyle}>{m.fournisseur_extrait}</td>
                     <td style={tdStyle}>{m.statut}</td>
                     <td style={tdStyle}>{m.date_creation ? new Date(m.date_creation).toLocaleDateString('fr-FR') : '—'}</td>
                     <td style={tdStyle}><DelaiCell value={m.delai_restant} /></td>
@@ -230,34 +182,9 @@ export default function MarchesListPage() {
           </table>
         )}
       </div>
-
-      {showCreateModal ? <MarcheCreateModal onClose={() => setShowCreateModal(false)} /> : null}
     </div>
   );
 }
-
-const backdropStyle = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(17,24,39,0.45)',
-  display: 'grid',
-  placeItems: 'center',
-  zIndex: 90,
-};
-
-const modalStyle = {
-  width: 'min(520px, 92vw)',
-  background: '#fff',
-  borderRadius: 12,
-  padding: 18,
-};
-
-const labelStyle = {
-  display: 'grid',
-  gap: 6,
-  fontSize: 13,
-  color: '#374151',
-};
 
 const inputStyle = {
   border: '1px solid #d1d5db',
@@ -272,15 +199,6 @@ const primaryButton = {
   padding: '8px 12px',
   background: '#111827',
   color: '#fff',
-  cursor: 'pointer',
-};
-
-const secondaryButton = {
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#fff',
-  color: '#111827',
   cursor: 'pointer',
 };
 
