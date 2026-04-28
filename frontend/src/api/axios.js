@@ -5,6 +5,20 @@ const apiClient = axios.create({
   withCredentials: true,
 });
 
+function toSnakeCase(str) {
+  return str.replace(/([A-Z])/g, (m) => '_' + m.toLowerCase());
+}
+
+function deepSnakeKeys(value) {
+  if (Array.isArray(value)) return value.map(deepSnakeKeys);
+  if (value !== null && typeof value === 'object' && !(value instanceof Blob)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [toSnakeCase(k), deepSnakeKeys(v)])
+    );
+  }
+  return value;
+}
+
 // Request interceptor: attach Authorization header
 apiClient.interceptors.request.use(
   (config) => {
@@ -33,7 +47,12 @@ function processQueue(error, token = null) {
 }
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.config?.responseType !== 'blob' && response.data && typeof response.data === 'object') {
+      response.data = deepSnakeKeys(response.data);
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
     const url = originalRequest?.url || '';

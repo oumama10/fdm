@@ -38,8 +38,20 @@ class _ReadUpdateViewSet(
 
 
 class CategorieViewSet(viewsets.ModelViewSet):
-    queryset = Categorie.objects.all()
     serializer_class = CategorieSerializer
+
+    def get_queryset(self):
+        qs = Categorie.objects.all()
+        is_consommable = self.request.query_params.get("is_consommable")
+        if is_consommable is None:
+            return qs
+
+        normalized = str(is_consommable).strip().lower()
+        if normalized in ("true", "1", "yes"):
+            return qs.filter(nom_categorie="Consommable")
+        if normalized in ("false", "0", "no"):
+            return qs.filter(nom_categorie="Bien Inventaire")
+        return qs
 
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
@@ -61,9 +73,18 @@ class SousCategorieViewSet(viewsets.ModelViewSet):
         return [IsGestionnaireOrAdmin()]
 
     def get_queryset(self):
-        qs = SousCategorie.objects.select_related("id_categorie").all()
-        if id_categorie := self.request.query_params.get("id_categorie"):
-            qs = qs.filter(id_categorie=id_categorie)
+        qs = SousCategorie.objects.select_related("id_categorie", "id_parent_sous_categorie").all()
+        cat_id = self.request.query_params.get("id_categorie") or self.request.query_params.get("categorie")
+        parent_id = self.request.query_params.get("parent")
+        roots_only = self.request.query_params.get("roots_only")
+
+        if cat_id:
+            qs = qs.filter(id_categorie_id=cat_id)
+        if parent_id:
+            qs = qs.filter(id_parent_sous_categorie_id=parent_id)
+        if roots_only == "true":
+            qs = qs.filter(id_parent_sous_categorie__isnull=True)
+
         return qs
 
 
@@ -88,8 +109,13 @@ class RessourceViewSet(viewsets.ModelViewSet):
         ).all()
         params = self.request.query_params
 
-        if id_categorie := params.get("id_categorie"):
-            qs = qs.filter(id_categorie=id_categorie)
+        cat_id = params.get("id_categorie") or params.get("categorie")
+        scat_id = params.get("id_sous_categorie") or params.get("sous_categorie")
+
+        if cat_id:
+            qs = qs.filter(id_categorie_id=cat_id)
+        if scat_id:
+            qs = qs.filter(id_sous_categorie_id=scat_id)
 
         # ?type=consommable | bien_inventaire
         type_param = params.get("type")
@@ -138,6 +164,7 @@ class InstanceRessourceViewSet(viewsets.ModelViewSet):
         qs = InstanceRessource.objects.select_related(
             "id_ressource",
             "id_service_actuel",
+            "id_lot__id_marche",
         )
 
         if user.id_role and user.id_role.nom_role == "chef_service":

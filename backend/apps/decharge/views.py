@@ -219,7 +219,7 @@ class SignatureDechargeViewSet(viewsets.GenericViewSet):
     """
     Nested under /decharges/{decharge_pk}/signature/
 
-    upload_scan  POST  IsChefService (must own the décharge)
+    detail       GET   IsGestionnaireOrAdmin | chef owner
     valider      POST  IsGestionnaireOrAdmin
     rejeter      POST  IsGestionnaireOrAdmin
     """
@@ -239,78 +239,9 @@ class SignatureDechargeViewSet(viewsets.GenericViewSet):
                 detail=f"Signature introuvable pour la décharge {decharge_pk}."
             )
 
-    # ── upload_scan ───────────────────────────────────────────────────────────
-
     @action(detail=False, methods=["get"], url_path="detail")
     def detail(self, request, decharge_pk=None):
         signature = self._get_signature(decharge_pk)
-        return Response(
-            SignatureDechargeSerializer(signature).data,
-            status=status.HTTP_200_OK,
-        )
-
-    # ── upload_scan ───────────────────────────────────────────────────────────
-
-    @action(detail=False, methods=["post"], url_path="upload_scan")
-    def upload_scan(self, request, decharge_pk=None):
-        # Permission: IsChefService only
-        if not (
-            request.user.is_authenticated
-            and request.user.id_role
-            and request.user.id_role.nom_role == "chef_service"
-        ):
-            raise PermissionDenied()
-
-        signature = self._get_signature(decharge_pk)
-        decharge = signature.id_decharge
-
-        if not _is_chef_owner(request.user, decharge):
-            raise PermissionDenied(
-                detail="Vous n'êtes pas le chef demandeur de cette décharge."
-            )
-
-        if signature.statut not in ("en_attente",):
-            return Response(
-                {
-                    "detail": (
-                        f"Impossible d'uploader un scan pour une signature "
-                        f"au statut '{signature.statut}'."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        scan_file = request.FILES.get("fichier_scan_signe")
-        if not scan_file:
-            return Response(
-                {"detail": "Le fichier 'fichier_scan_signe' est requis."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        observation = request.data.get("observation_chef", "")
-
-        signature.fichier_scan_signe = scan_file
-        signature.observation_chef = observation
-        signature.statut = "signe"
-        signature.date_signature = timezone.now()
-        signature.save(
-            update_fields=[
-                "fichier_scan_signe",
-                "observation_chef",
-                "statut",
-                "date_signature",
-            ]
-        )
-
-        _notify_gestionnaires(
-            decharge,
-            titre="Scan décharge reçu",
-            message=(
-                f"Le chef a soumis le scan signé de la décharge "
-                f"{decharge.numero_decharge}."
-            ),
-        )
-
         return Response(
             SignatureDechargeSerializer(signature).data,
             status=status.HTTP_200_OK,
@@ -329,25 +260,24 @@ class SignatureDechargeViewSet(viewsets.GenericViewSet):
 
         signature = self._get_signature(decharge_pk)
 
-        if signature.statut != "signe":
+        if signature.statut not in ("en_attente", "signe"):
             return Response(
                 {
                     "detail": (
-                        f"Seule une signature au statut 'signe' peut être validée "
+                        f"La signature doit être en attente ou déjà signée "
                         f"(statut actuel : '{signature.statut}')."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        signature.statut = "valide"
+        signature.statut = "signe"
         signature.id_valide_par = request.user
         signature.date_validation_systeme = timezone.now()
-        # post_save signal (on_signature_valide) fires here and handles stock
-        # updates, MouvementStock creation and demande status change.
-        signature.save(
-            update_fields=["statut", "id_valide_par_id", "date_validation_systeme"]
-        )
+        signature.date_signature = signature.date_signature or timezone.now()
+        # post_save signal handles stock updates, MouvementStock creation
+        # and demande status change when the signature becomes "signe".
+        signature.save(update_fields=["statut", "id_valide_par_id", "date_validation_systeme", "date_signature"])
 
         return Response(
             SignatureDechargeSerializer(signature).data,

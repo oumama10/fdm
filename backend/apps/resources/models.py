@@ -28,6 +28,13 @@ class SousCategorie(models.Model):
     nom_sous_categorie = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     id_categorie = models.ForeignKey(Categorie, on_delete=models.CASCADE)
+    id_parent_sous_categorie = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="children",
+    )
 
     class Meta:
         verbose_name = "sous-categorie"

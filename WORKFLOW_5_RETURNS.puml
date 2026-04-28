@@ -1,0 +1,32 @@
+@startuml
+title Workflow 5 - Return Processing
+
+skinparam backgroundColor #ffffff
+skinparam shadowing false
+skinparam ArrowColor #1E40AF
+skinparam ActivityBorderColor #2563EB
+skinparam ActivityBackgroundColor #F8FAFC
+
+start
+:Create RETOUR_MATERIEL request;
+:Link target instance/resource;
+:Gestionnaire evaluates condition;
+
+if (Decision = reparer?) then (yes)
+  :Set instance statut=en_maintenance;
+else (no)
+  if (Decision = reaffecter?) then (yes)
+    :Set instance statut=en_stock/en_service;
+  else (no)
+    if (Decision = rebut?) then (yes)
+      :Set instance statut=retire/hors_service;
+    else (no)
+      :Record custom decision;
+    endif
+  endif
+endif
+
+:Insert MOUVEMENT_STOCK(retour/transfert/rebut);
+:Store audit trace;
+stop
+@enduml

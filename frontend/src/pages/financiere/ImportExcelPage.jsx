@@ -3,16 +3,19 @@ import { useDropzone } from 'react-dropzone';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { FileSpreadsheet, UploadCloud } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import {
   getImportById,
   getMarcheDetail,
   getStagingItems,
   sendImportToGestionnaire,
+  updateImportById,
+  updateStagingItem,
   uploadExcelDirect,
 } from '../../api/procurement';
 import { Button } from '@/components/ui/button';
+import { IMPORT_STATUT_LABELS, StatusBadge } from '../../constants/statuts';
 
 function pickValue(obj, keys, fallback = '') {
   if (!obj) return fallback;
@@ -49,11 +52,26 @@ function formatMoney(value) {
 
 export default function ImportExcelPage() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const isFinanciere = location.pathname.startsWith('/financiere');
+  const roleLabel = isFinanciere ? 'Service Financière' : 'Gestionnaire Magasin';
+  const basePrefix = isFinanciere ? '/financiere' : '/gestionnaire';
 
   const [file, setFile] = useState(null);
   const [sourceType, setSourceType] = useState('marche');
   const [importId, setImportId] = useState(null);
   const [uploadState, setUploadState] = useState('idle');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editableHeader, setEditableHeader] = useState({
+    titre_fichier: '',
+    reference_document: '',
+    fournisseur_denomination: '',
+    fournisseur_telephone: '',
+    fournisseur_email: '',
+    fournisseur_adresse: '',
+    delai_execution: '',
+  });
+  const [editableRows, setEditableRows] = useState([]);
   const handledStatusRef = useRef(false);
 
   const dropzone = useDropzone({
@@ -93,14 +111,14 @@ export default function ImportExcelPage() {
     enabled: Boolean(importId),
     refetchInterval: (query) => {
       const status = getImportStatus(query.state.data?.data);
-      return status === 'en_revision' || !status ? 3000 : false;
+      return !status ? 3000 : false;
     },
     staleTime: 0,
   });
 
   const importData = importQuery.data?.data;
   const importStatus = getImportStatus(importData);
-  const isReviewReady = importStatus === 'brouillon' || importStatus === 'valide';
+  const isReviewReady = Boolean(importStatus);
   const marcheId = pickValue(importData, ['id_marche', 'idMarche'], null);
 
   const stagingQuery = useQuery({
@@ -141,7 +159,7 @@ export default function ImportExcelPage() {
   const normalizedRows = useMemo(() => {
     return stagingItems.map((item) => ({
       id: pickValue(item, ['id_staging', 'idStaging', 'id'], null),
-      designation: pickValue(item, ['designation_brute', 'designationBrute', 'designation_normalisee', 'designationNormalisee', 'designation'], '-'),
+      designation: pickValue(item, ['designation_normalisee', 'designationNormalisee', 'designation_brute', 'designationBrute', 'designation'], '-'),
       description: pickValue(item, ['description'], '-'),
       quantite: pickValue(item, ['quantite', 'quantity'], '-'),
       prixUnitaire: pickValue(item, ['prix_unitaire_ht', 'prixUnitaireHt', 'unit_price_ht', 'unitPriceHt'], null),
@@ -163,10 +181,51 @@ export default function ImportExcelPage() {
     },
   });
 
+  const saveEditsMutation = useMutation({
+    mutationFn: async () => {
+      if (!importId) return;
+
+      await updateImportById(importId, {
+        titre_fichier: editableHeader.titre_fichier || '',
+        reference_document: editableHeader.reference_document || '',
+        fournisseur_denomination: editableHeader.fournisseur_denomination || '',
+        fournisseur_telephone: editableHeader.fournisseur_telephone || '',
+        fournisseur_email: editableHeader.fournisseur_email || '',
+        fournisseur_adresse: editableHeader.fournisseur_adresse || '',
+        delai_execution: editableHeader.delai_execution || '',
+      });
+
+      const updates = editableRows
+        .filter((row) => row.id)
+        .map((row) =>
+          updateStagingItem(row.id, {
+            designation_normalisee: row.designation || '',
+            description: row.description || '',
+            quantite: Number(row.quantite) || 1,
+            prix_unitaire_ht: row.prixUnitaire === '' ? null : row.prixUnitaire,
+            prix_total_ht: row.prixTotal === '' ? null : row.prixTotal,
+          })
+        );
+
+      if (updates.length) {
+        await Promise.all(updates);
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([importQuery.refetch(), stagingQuery.refetch()]);
+      setIsEditModalOpen(false);
+      toast.success('Informations extraites modifiées avec succès.');
+    },
+    onError: (error) => {
+      const message = error?.response?.data?.detail || 'Échec de la modification des informations extraites.';
+      toast.error(message);
+    },
+  });
+
   useEffect(() => {
     if (!importData || handledStatusRef.current) return;
 
-    if (importStatus === 'brouillon') {
+    if (importStatus === 'en_attente') {
       handledStatusRef.current = true;
       setUploadState('done');
       toast.success('Extraction terminée. Vérifiez les données puis envoyez au gestionnaire.');
@@ -179,7 +238,7 @@ export default function ImportExcelPage() {
       return;
     }
 
-    if (importStatus === 'rejete') {
+    if (importStatus === 'non_conforme' || importStatus === 'autre') {
       handledStatusRef.current = true;
       setUploadState('error');
       toast.error(getImportObservations(importData) || "Extraction rejetée. Vérifiez le fichier Excel.");
@@ -188,9 +247,10 @@ export default function ImportExcelPage() {
 
   const statusText = useMemo(() => {
     if (uploadMutation.isPending) return 'Upload en cours...';
-    if (uploadState === 'extracting') return 'Extraction en cours...';
+    if (uploadState === 'extracting' && !importStatus) return 'Extraction en cours...';
     if (importStatus === 'valide') return 'Import validé et envoyé au gestionnaire.';
-    if (uploadState === 'done') return 'Extraction terminée — en attente de validation financière.';
+    if (importStatus === 'en_attente' || uploadState === 'done') return 'Extraction terminée — prête à être envoyée au gestionnaire.';
+    if (importStatus === 'en_revision') return 'Import envoyé au gestionnaire (en révision).';
     if (uploadState === 'error') return 'Extraction rejetée.';
     return '';
   }, [importStatus, uploadMutation.isPending, uploadState]);
@@ -218,28 +278,58 @@ export default function ImportExcelPage() {
     }
   }
 
+  function openEditModal() {
+    setEditableHeader({
+      titre_fichier: pickValue(importData, ['titre_fichier', 'titreFichier'], ''),
+      reference_document: headerDisplay.reference || '',
+      fournisseur_denomination: headerDisplay.fournisseur || '',
+      fournisseur_telephone: headerDisplay.telephone || '',
+      fournisseur_email: headerDisplay.email || '',
+      fournisseur_adresse: headerDisplay.adresse || '',
+      delai_execution: headerDisplay.delai || '',
+    });
+    setEditableRows(
+      normalizedRows.map((row) => ({
+        id: row.id,
+        designation: row.designation === '-' ? '' : row.designation,
+        description: row.description === '-' ? '' : row.description,
+        quantite: row.quantite === '-' ? 1 : row.quantite,
+        prixUnitaire: row.prixUnitaire ?? '',
+        prixTotal: row.prixTotal ?? '',
+      }))
+    );
+    setIsEditModalOpen(true);
+  }
+
+  function updateEditableRow(index, patch) {
+    setEditableRows((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, ...patch } : row))
+    );
+  }
+
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <section style={heroStyle}>
-        <h1 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{ display: 'grid', gap: 16 }}>
+      <section className="card-surface" style={heroStyle}>
+        <h1 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--ink)' }}>
           <FileSpreadsheet size={28} />
-          Import Fichier — Service Financière
+          Import Fichier — {roleLabel}
         </h1>
         <p style={{ margin: '6px 0 0', color: '#6b7280', fontSize: 14 }}>
           Déposez votre fichier .xlsx ou .pdf puis lancez directement l'extraction IA.
         </p>
       </section>
 
-      <section style={cardStyle}>
+      <section className="card-surface" style={cardStyle}>
         <div
           {...dropzone.getRootProps()}
           style={{
-            border: '2px dashed #d1d5db',
-            borderRadius: 12,
-            padding: 24,
+            border: '2px dashed rgba(0,0,0,0.2)',
+            borderRadius: 24,
+            padding: 48,
             textAlign: 'center',
-            background: dropzone.isDragActive ? '#eff6ff' : '#fff',
+            background: dropzone.isDragActive ? 'rgba(225,245,238,0.4)' : 'var(--surface)',
             cursor: 'pointer',
+            transition: 'all 150ms ease',
           }}
         >
           <input {...dropzone.getInputProps()} />
@@ -299,7 +389,7 @@ export default function ImportExcelPage() {
         </div>
       </section>
 
-      <section style={cardStyle}>
+      <section className="card-surface" style={cardStyle}>
         {importStatus === 'valide' ? (
           <>
             <h2 style={{ margin: '0 0 10px', fontSize: 18 }}>Import soumis</h2>
@@ -322,7 +412,7 @@ export default function ImportExcelPage() {
           </div>
         ) : !isReviewReady ? (
           <div style={{ fontSize: 14, color: '#4b5563' }}>
-            Extraction en cours... le tableau apparaîtra automatiquement quand le statut passe à brouillon.
+            Extraction en cours... le tableau apparaîtra automatiquement.
           </div>
         ) : (
           <>
@@ -338,6 +428,7 @@ export default function ImportExcelPage() {
               <div><strong>Email:</strong> {headerDisplay.email || '-'}</div>
               <div><strong>Adresse:</strong> {headerDisplay.adresse || '-'}</div>
               <div><strong>Délai / livraison:</strong> {headerDisplay.delai || '-'}</div>
+              <div><strong>Statut:</strong> <StatusBadge map={IMPORT_STATUT_LABELS} value={importStatus} /></div>
             </div>
 
             {stagingQuery.isLoading ? (
@@ -345,27 +436,27 @@ export default function ImportExcelPage() {
             ) : stagingItems.length === 0 ? (
               <div style={{ fontSize: 14, color: '#4b5563' }}>Aucun article extrait.</div>
             ) : (
-              <div style={tableWrapperStyle}>
-                <table style={tableStyle}>
+              <div className="data-table-wrap" style={tableWrapperStyle} aria-label="Tableau des données extraites">
+                <table className="data-table" style={tableStyle}>
                   <thead>
                     <tr>
-                      <th style={thStyle}>Désignation</th>
-                      <th style={thStyle}>Description</th>
-                      <th style={thStyle}>Quantité</th>
-                      <th style={thStyle}>PU HT</th>
-                      <th style={thStyle}>PT HT</th>
+                      <th>Désignation</th>
+                      <th>Description</th>
+                      <th>Quantité</th>
+                      <th>PU HT</th>
+                      <th>PT HT</th>
                     </tr>
                   </thead>
                   <tbody>
                     {normalizedRows.map((item, index) => (
                       <tr key={item.id || `row-${index}`}>
-                        <td style={tdStyle}>
+                        <td>
                           <div>{item.designation || '-'}</div>
                         </td>
-                        <td style={tdStyle}>{item.description}</td>
-                        <td style={tdStyle}>{item.quantite ?? '-'}</td>
-                        <td style={tdStyle}>{formatMoney(item.prixUnitaire)}</td>
-                        <td style={tdStyle}>{formatMoney(item.prixTotal)}</td>
+                        <td>{item.description}</td>
+                        <td className="ref-mono">{item.quantite ?? '-'}</td>
+                        <td className="ref-mono">{formatMoney(item.prixUnitaire)}</td>
+                        <td className="ref-mono">{formatMoney(item.prixTotal)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -374,17 +465,85 @@ export default function ImportExcelPage() {
             )}
 
             <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
-              <Button
-                onClick={handleSendToGestionnaire}
-                disabled={
-                  sendMutation.isPending ||
-                  importStatus !== 'brouillon' ||
-                  stagingItems.length === 0
-                }
-              >
-                {importStatus === 'valide' ? 'Déjà envoyé au gestionnaire' : 'Valider et envoyer au gestionnaire'}
-              </Button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <Button
+                  variant="outline"
+                  onClick={openEditModal}
+                  disabled={importStatus !== 'en_attente' || stagingItems.length === 0}
+                >
+                  Modifier
+                </Button>
+                <Button
+                  onClick={handleSendToGestionnaire}
+                  disabled={
+                    sendMutation.isPending ||
+                    importStatus !== 'en_attente' ||
+                    stagingItems.length === 0
+                  }
+                >
+                  {importStatus === 'valide' ? 'Déjà envoyé au gestionnaire' : 'Valider et envoyer au gestionnaire'}
+                </Button>
+              </div>
             </div>
+
+            {isEditModalOpen ? (
+              <div style={modalOverlayStyle}>
+                <div style={modalCardStyle}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ margin: 0 }}>Modifier les informations extraites</h3>
+                    <button style={closeButtonStyle} onClick={() => setIsEditModalOpen(false)}>Fermer</button>
+                  </div>
+
+                  <div style={modalSectionStyle}>
+                    <h4 style={{ margin: '0 0 8px' }}>En-tête</h4>
+                    <div style={modalHeaderGridStyle}>
+                      <input style={modalInputStyle} placeholder="Titre" value={editableHeader.titre_fichier} onChange={(e) => setEditableHeader((s) => ({ ...s, titre_fichier: e.target.value }))} />
+                      <input style={modalInputStyle} placeholder="Référence" value={editableHeader.reference_document} onChange={(e) => setEditableHeader((s) => ({ ...s, reference_document: e.target.value }))} />
+                      <input style={modalInputStyle} placeholder="Fournisseur" value={editableHeader.fournisseur_denomination} onChange={(e) => setEditableHeader((s) => ({ ...s, fournisseur_denomination: e.target.value }))} />
+                      <input style={modalInputStyle} placeholder="Téléphone" value={editableHeader.fournisseur_telephone} onChange={(e) => setEditableHeader((s) => ({ ...s, fournisseur_telephone: e.target.value }))} />
+                      <input style={modalInputStyle} placeholder="Email" value={editableHeader.fournisseur_email} onChange={(e) => setEditableHeader((s) => ({ ...s, fournisseur_email: e.target.value }))} />
+                      <input style={modalInputStyle} placeholder="Délai / livraison" value={editableHeader.delai_execution} onChange={(e) => setEditableHeader((s) => ({ ...s, delai_execution: e.target.value }))} />
+                    </div>
+                    <textarea style={{ ...modalInputStyle, minHeight: 72, resize: 'vertical' }} placeholder="Adresse" value={editableHeader.fournisseur_adresse} onChange={(e) => setEditableHeader((s) => ({ ...s, fournisseur_adresse: e.target.value }))} />
+                  </div>
+
+                  <div style={modalSectionStyle}>
+                    <h4 style={{ margin: '0 0 8px' }}>Lignes extraites</h4>
+                    <div style={{ maxHeight: 280, overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr>
+                            <th style={thStyle}>Désignation</th>
+                            <th style={thStyle}>Description</th>
+                            <th style={thStyle}>Qté</th>
+                            <th style={thStyle}>PU HT</th>
+                            <th style={thStyle}>PT HT</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {editableRows.map((row, index) => (
+                            <tr key={row.id || index}>
+                              <td style={tdStyle}><input style={modalInputStyle} value={row.designation} onChange={(e) => updateEditableRow(index, { designation: e.target.value })} /></td>
+                              <td style={tdStyle}><textarea style={{ ...modalInputStyle, minHeight: 56, resize: 'vertical' }} value={row.description} onChange={(e) => updateEditableRow(index, { description: e.target.value })} /></td>
+                              <td style={tdStyle}><input type="number" min="1" style={modalInputStyle} value={row.quantite} onChange={(e) => updateEditableRow(index, { quantite: e.target.value })} /></td>
+                              <td style={tdStyle}><input style={modalInputStyle} value={row.prixUnitaire} onChange={(e) => updateEditableRow(index, { prixUnitaire: e.target.value })} /></td>
+                              <td style={tdStyle}><input style={modalInputStyle} value={row.prixTotal} onChange={(e) => updateEditableRow(index, { prixTotal: e.target.value })} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                    <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Annuler</Button>
+                    <Button onClick={() => saveEditsMutation.mutate()} disabled={saveEditsMutation.isPending}>
+                      {saveEditsMutation.isPending ? 'Enregistrement...' : 'Enregistrer les modifications'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </>
             )}
           </>
@@ -462,4 +621,54 @@ const tdStyle = {
   fontSize: 13,
   color: '#111827',
   verticalAlign: 'top',
+};
+
+const modalOverlayStyle = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(17, 24, 39, 0.45)',
+  display: 'grid',
+  placeItems: 'center',
+  zIndex: 1000,
+  padding: 16,
+};
+
+const modalCardStyle = {
+  width: 'min(1100px, 96vw)',
+  maxHeight: '90vh',
+  overflow: 'auto',
+  background: '#fff',
+  borderRadius: 12,
+  border: '1px solid #e5e7eb',
+  padding: 16,
+  display: 'grid',
+  gap: 12,
+};
+
+const modalSectionStyle = {
+  display: 'grid',
+  gap: 10,
+};
+
+const modalHeaderGridStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+  gap: 8,
+};
+
+const modalInputStyle = {
+  width: '100%',
+  border: '1px solid #d1d5db',
+  borderRadius: 8,
+  padding: '8px 10px',
+  fontSize: 13,
+  color: '#111827',
+};
+
+const closeButtonStyle = {
+  border: '1px solid #d1d5db',
+  background: '#fff',
+  borderRadius: 8,
+  padding: '6px 10px',
+  cursor: 'pointer',
 };

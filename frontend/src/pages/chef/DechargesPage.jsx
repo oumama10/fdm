@@ -4,22 +4,26 @@ import { useQuery } from '@tanstack/react-query';
 
 import { downloadPdf, getDecharges } from '../../api/decharge';
 
-function SignatureCell({ statut, onDownload }) {
-  if (statut === 'en_attente') {
-    return <button style={secondaryButton} onClick={onDownload}>Télécharger PDF</button>;
-  }
-  if (statut === 'signe') {
-    return <span style={{ color: '#1e3a8a', fontWeight: 600 }}>En attente de validation</span>;
-  }
-  if (statut === 'valide') {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ color: '#16a34a', fontWeight: 700 }}>✓</span>
-        <button style={secondaryButton} onClick={onDownload}>Télécharger PDF</button>
-      </div>
-    );
-  }
-  return <span style={{ color: '#6b7280' }}>—</span>;
+function StatutBadge({ statut }) {
+  const map = {
+    non_generee: { bg: '#fef3c7', color: '#92400e', label: 'Non signé' },
+    en_attente:  { bg: '#fef3c7', color: '#92400e', label: 'Non signé' },
+    signe:       { bg: '#d1fae5', color: '#065f46', label: 'Signé' },
+    valide:      { bg: '#d1fae5', color: '#065f46', label: 'Validé' },
+    rejete:      { bg: '#fee2e2', color: '#991b1b', label: 'Rejeté' },
+  };
+  const tone = map[statut] || map.non_generee;
+  return (
+    <span className="status-chip" style={{ background: tone.bg, color: tone.color }}>
+      {tone.label}
+    </span>
+  );
+}
+
+function articlesSummary(lignes) {
+  if (!lignes?.length) return '—';
+  if (lignes.length === 1) return lignes[0].ressource?.designation || '1 article';
+  return `${lignes.length} articles`;
 }
 
 export default function DechargesPage() {
@@ -36,47 +40,79 @@ export default function DechargesPage() {
     return [...raw].sort((a, b) => new Date(b.date_generation || 0) - new Date(a.date_generation || 0));
   }, [dechargesQuery.data?.data]);
 
-  async function handleDownload(id, event) {
-    event?.stopPropagation();
-    const response = await downloadPdf(id);
-    const blob = new Blob([response.data], { type: 'application/pdf' });
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = objectUrl;
-    anchor.download = `decharge-${id}.pdf`;
-    anchor.click();
-    URL.revokeObjectURL(objectUrl);
+  async function handleDownload(id, e) {
+    e.stopPropagation();
+    try {
+      const response = await downloadPdf(id);
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `decharge-${id}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('PDF non disponible.');
+    }
   }
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <h1 style={{ margin: 0 }}>Mes Décharges</h1>
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+    <div className="page-stack">
+      <h1 className="page-title">Mes Décharges</h1>
+
+      <div className="data-table-wrap">
         {dechargesQuery.isLoading ? (
-          <div style={{ padding: 14 }}><div style={{ height: 180, borderRadius: 8, background: '#f3f4f6' }} /></div>
+          <div style={{ padding: 14 }}>
+            <div style={{ height: 180, borderRadius: 8, background: '#f3f4f6' }} />
+          </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <table className="data-table" style={{ fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                <th style={thStyle}>N°</th>
-                <th style={thStyle}>Date</th>
-                <th style={thStyle}>Statut</th>
-                <th style={thStyle}>Actions</th>
+              <tr>
+                <th>Référence</th>
+                <th>Date</th>
+                <th>Articles</th>
+                <th>Statut</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={4} style={{ padding: 16, color: '#6b7280' }}>Aucune décharge.</td></tr>
-              ) : rows.map((row) => (
-                <tr key={row.id_decharge} style={{ borderTop: '1px solid #f3f4f6', cursor: 'pointer' }} onClick={() => navigate(`/chef/decharges/${row.id_decharge}/signer`)}>
-                  <td style={tdStyle}>{row.numero_decharge}</td>
-                  <td style={tdStyle}>{row.date_generation ? new Date(row.date_generation).toLocaleDateString('fr-FR') : '—'}</td>
-                  <td style={tdStyle}>{(row.statut_signature || '').replaceAll('_', ' ')}</td>
-                  <td style={tdStyle}>
-                    <SignatureCell statut={row.statut_signature} onDownload={(event) => handleDownload(row.id_decharge, event)} />
-                  </td>
+                <tr>
+                  <td colSpan={5} className="empty-state">Aucune décharge.</td>
                 </tr>
-              ))}
+              ) : (
+                rows.map((row) => (
+                  <tr
+                    key={row.id_decharge}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/chef/decharges/${row.id_decharge}`)}
+                  >
+                    <td style={{ fontWeight: 600 }}>{row.numero_decharge}</td>
+                    <td>{row.date_generation ? new Date(row.date_generation).toLocaleDateString('fr-FR') : '—'}</td>
+                    <td style={{ color: '#6b7280' }}>{articlesSummary(row.lignes)}</td>
+                    <td><StatutBadge statut={row.statut_signature} /></td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 12, padding: '4px 8px' }}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/chef/decharges/${row.id_decharge}`); }}
+                        >
+                          Voir
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 12, padding: '4px 8px' }}
+                          onClick={(e) => handleDownload(row.id_decharge, e)}
+                        >
+                          Imprimer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         )}
@@ -84,14 +120,3 @@ export default function DechargesPage() {
     </div>
   );
 }
-
-const secondaryButton = {
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '6px 10px',
-  background: '#fff',
-  cursor: 'pointer',
-};
-
-const thStyle = { padding: 10, fontWeight: 600 };
-const tdStyle = { padding: 10 };

@@ -255,11 +255,13 @@ def normalize_designation(raw_text: str) -> dict:
     Returns
     -------
     dict
-        designation_normalisee  (str)       — cleaned, accent-free text
-        type_detecte            (str)       — 'consommable' | 'bien_inventaire' | ''
-        id_categorie_suggeree   (int|None)  — FK to resources.Categorie
-        id_ressource_liee       (int|None)  — FK to resources.Ressource
-        confiance_ia            (float)     — confidence score 0.0 – 1.0
+        designation_normalisee      (str)       — cleaned, accent-free text
+        type_detecte                (str)       — 'consommable' | 'bien_inventaire' | ''
+        id_categorie_suggeree       (int|None)  — FK to resources.Categorie
+        categorie_suggeree_nom      (str)       — category name (e.g., 'Consommable', 'Bien Inventaire')
+        sous_categorie_suggeree_nom (str)       — subcategory name (e.g., 'PAPETERIE', 'MATERIEL_INFORMATIQUE')
+        id_ressource_liee           (int|None)  — FK to resources.Ressource
+        confiance_ia                (float)     — confidence score 0.0 – 1.0
 
     Confidence scoring
     ------------------
@@ -313,10 +315,14 @@ def normalize_designation(raw_text: str) -> dict:
 
     type_detecte = ""
     id_categorie: int | None = None
+    categorie_nom = ""
+    sous_categorie_nom = ""
 
     if matched_rule is not None:
         confidence += 0.50
         type_detecte = matched_rule["type_detecte"]
+        categorie_nom = matched_rule["categorie_nom"]
+        sous_categorie_nom = matched_rule["sous_categorie"]
         id_categorie = _lookup_categorie(matched_rule["categorie_nom"])
 
     # ── 4. DB ressource lookup ────────────────────────────────────────────
@@ -333,6 +339,8 @@ def normalize_designation(raw_text: str) -> dict:
         "designation_normalisee": cleaned,
         "type_detecte": type_detecte,
         "id_categorie_suggeree": id_categorie,
+        "categorie_suggeree_nom": categorie_nom,
+        "sous_categorie_suggeree_nom": sous_categorie_nom,
         "id_ressource_liee": id_ressource,
         "confiance_ia": confidence,
     }

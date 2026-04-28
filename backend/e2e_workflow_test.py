@@ -138,7 +138,7 @@ def main():
     for row in items:
         linked = row.id_ressource_liee.designation if row.id_ressource_liee else "None"
         print(
-            f"- {row.designation_brute} | norm={row.designation_normalisee} | qte={row.quantite} | conf={row.confiance_ia} | linked={linked}"
+            f"- {row.designation_brute} | norm={row.designation_normalisee} | qte={row.quantite}"
         )
 
     print(f"Notifications: {notifs.count()}")

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+﻿import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -26,10 +26,10 @@ const pieColors = ['#2563eb', '#10b981'];
 function SkeletonCard() {
   return (
     <div
+      className="kpi-card"
       style={{
         height: 112,
-        borderRadius: 12,
-        background: 'linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%)',
+        background: 'linear-gradient(90deg, #eef6f1 25%, #e4efe9 50%, #eef6f1 75%)',
         backgroundSize: '200% 100%',
       }}
     />
@@ -55,18 +55,7 @@ function Badge({ value, type }) {
   const tone = palette[value] || { bg: '#e5e7eb', color: '#374151' };
 
   return (
-    <span
-      style={{
-        display: 'inline-block',
-        fontSize: 12,
-        fontWeight: 600,
-        borderRadius: 999,
-        padding: '4px 10px',
-        background: tone.bg,
-        color: tone.color,
-        textTransform: 'capitalize',
-      }}
-    >
+    <span className="status-chip" style={{ background: tone.bg, color: tone.color }}>
       {String(value || '').replaceAll('_', ' ')}
     </span>
   );
@@ -96,13 +85,13 @@ export default function DashboardPage() {
 
   const demandesQuery = useQuery({
     queryKey: ['demandes', 'latest'],
-    queryFn: getDemandes,
+    queryFn: () => getDemandes(),
     staleTime: STALE_TIME,
   });
 
   const alertesQuery = useQuery({
     queryKey: ['alertes', 'actives'],
-    queryFn: getAlertes,
+    queryFn: () => getAlertes(),
     staleTime: STALE_TIME,
   });
 
@@ -174,65 +163,46 @@ export default function DashboardPage() {
   const isBottomLoading = demandesQuery.isLoading || alertesQuery.isLoading;
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
-      <h1 style={{ margin: 0, fontSize: 24 }}>Dashboard Gestionnaire</h1>
+    <div className="page-stack">
+      <h1 className="page-title">Dashboard Gestionnaire</h1>
 
-      <section
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-          gap: 14,
-        }}
-      >
+      <section className="kpi-grid">
         {isTopLoading
           ? Array.from({ length: 4 }).map((_, idx) => <SkeletonCard key={`sk-card-${idx}`} />)
           : cards.map((card) => (
               <div
                 key={card.title}
-                style={{
-                  borderRadius: 12,
-                  padding: 16,
-                  border: `1px solid ${card.danger ? '#fecaca' : '#e5e7eb'}`,
-                  background: card.danger ? '#fff5f5' : '#ffffff',
-                }}
+                className={`kpi-card ${card.danger ? 'warn' : ''}`}
               >
-                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6 }}>{card.title}</div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: card.danger ? '#b91c1c' : '#111827' }}>
-                  {card.value}
-                </div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 6 }}>{card.subtitle}</div>
+                <div className="kpi-label">{card.title}</div>
+                <div className="kpi-value">{card.value}</div>
+                <div className="kpi-caption">{card.subtitle}</div>
               </div>
             ))}
       </section>
 
-      <section
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '2fr 1fr',
-          gap: 16,
-        }}
-      >
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 }}>
-          <h3 style={{ margin: '0 0 12px' }}>Acquisitions des 12 derniers mois</h3>
+      <section className="grid-two">
+        <div className="chart-card">
+          <h3 className="section-title">Acquisitions des 12 derniers mois</h3>
           {isChartLoading ? (
             <div style={{ height: 280, borderRadius: 8, background: '#f3f4f6' }} />
           ) : (
             <div style={{ width: '100%', height: 280 }}>
               <ResponsiveContainer>
                 <BarChart data={monthlyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#d7e7df" />
                   <XAxis dataKey="mois" />
                   <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="total" fill="#2563eb" name="Entrées" />
+                  <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #d7e7df' }} />
+                  <Bar dataKey="total" fill="#0f6e56" name="Entrées" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
         </div>
 
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14 }}>
-          <h3 style={{ margin: '0 0 12px' }}>Répartition par catégorie</h3>
+        <div className="chart-card">
+          <h3 className="section-title">Répartition par catégorie</h3>
           {isChartLoading ? (
             <div style={{ height: 280, borderRadius: 8, background: '#f3f4f6' }} />
           ) : (
@@ -253,60 +223,50 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '2fr 1fr',
-          gap: 16,
-          alignItems: 'start',
-        }}
-      >
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+      <section className="grid-two" style={{ alignItems: 'start' }}>
+        <div className="data-table-wrap">
           <div style={{ padding: 14, borderBottom: '1px solid #f3f4f6', fontWeight: 700 }}>5 dernières demandes</div>
           {isBottomLoading ? (
             <div style={{ padding: 14 }}>
               <div style={{ height: 160, borderRadius: 8, background: '#f3f4f6' }} />
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <table className="data-table" style={{ fontSize: 14 }}>
               <thead>
-                <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                  <th style={{ padding: 10 }}>ID</th>
-                  <th style={{ padding: 10 }}>Service</th>
-                  <th style={{ padding: 10 }}>Urgence</th>
-                  <th style={{ padding: 10 }}>Statut</th>
-                  <th style={{ padding: 10 }}>Date</th>
+                <tr>
+                  <th>ID</th>
+                  <th>Service</th>
+                  <th>Urgence</th>
+                  <th>Statut</th>
+                  <th>Date</th>
                 </tr>
               </thead>
               <tbody>
                 {latestDemandes.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ padding: 16, color: '#6b7280' }}>
+                    <td colSpan={5} className="empty-state">
                       Aucune demande trouvée.
                     </td>
                   </tr>
                 ) : (
                   latestDemandes.map((row) => {
                     const demandeId = row.id_demande ?? row.id;
-                    const serviceName = row.id_service?.nom_service || row.service || '—';
+                    const serviceName = row.service?.nom_service || row.service?.nomService || '—';
                     return (
                       <tr
                         key={demandeId}
                         onClick={() => navigate(`/gestionnaire/demandes/${demandeId}`)}
-                        style={{
-                          borderTop: '1px solid #f3f4f6',
-                          cursor: 'pointer',
-                        }}
+                        style={{ cursor: 'pointer' }}
                       >
-                        <td style={{ padding: 10 }}>#{demandeId}</td>
-                        <td style={{ padding: 10 }}>{serviceName}</td>
-                        <td style={{ padding: 10 }}>
+                        <td>#{demandeId}</td>
+                        <td>{serviceName}</td>
+                        <td>
                           <Badge type="urgence" value={row.urgence} />
                         </td>
-                        <td style={{ padding: 10 }}>
+                        <td>
                           <Badge type="statut" value={row.statut} />
                         </td>
-                        <td style={{ padding: 10 }}>{formatDate(row.date_demande)}</td>
+                        <td>{formatDate(row.date_demande)}</td>
                       </tr>
                     );
                   })
@@ -316,25 +276,25 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+        <div className="data-table-wrap">
           <div style={{ padding: 14, borderBottom: '1px solid #f3f4f6', fontWeight: 700 }}>Alertes délai actives</div>
           {isBottomLoading ? (
             <div style={{ padding: 14 }}>
               <div style={{ height: 160, borderRadius: 8, background: '#f3f4f6' }} />
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <table className="data-table" style={{ fontSize: 13 }}>
               <thead>
-                <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                  <th style={{ padding: 10 }}>Référence</th>
-                  <th style={{ padding: 10 }}>Jours</th>
-                  <th style={{ padding: 10 }}>Niveau</th>
+                <tr>
+                  <th>Référence</th>
+                  <th>Jours</th>
+                  <th>Niveau</th>
                 </tr>
               </thead>
               <tbody>
                 {activeAlertes.length === 0 ? (
                   <tr>
-                    <td colSpan={3} style={{ padding: 16, color: '#6b7280' }}>
+                    <td colSpan={3} className="empty-state">
                       Aucune alerte active.
                     </td>
                   </tr>
@@ -343,12 +303,12 @@ export default function DashboardPage() {
                     const days = Number(alert.jours_restants ?? 0);
                     const isDanger = days <= 7;
                     return (
-                      <tr key={alert.id_alerte} style={{ borderTop: '1px solid #f3f4f6', background: isDanger ? '#fff5f5' : '#fff' }}>
-                        <td style={{ padding: 10 }}>{alert.id_marche?.reference || '—'}</td>
-                        <td style={{ padding: 10, color: isDanger ? '#b91c1c' : '#111827', fontWeight: isDanger ? 700 : 500 }}>
+                      <tr key={alert.id_alerte} className={isDanger ? 'row-danger' : ''}>
+                        <td>{alert.id_marche?.reference || '—'}</td>
+                        <td style={{ color: isDanger ? '#9a6e1a' : '#111827', fontWeight: isDanger ? 700 : 500 }}>
                           {days}
                         </td>
-                        <td style={{ padding: 10, textTransform: 'capitalize' }}>{alert.niveau_alerte || '—'}</td>
+                        <td style={{ textTransform: 'capitalize' }}>{alert.niveau_alerte || '—'}</td>
                       </tr>
                     );
                   })

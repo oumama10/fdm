@@ -1,0 +1,34 @@
+@startuml
+title Workflow 2 - PDF Import to Staging
+
+skinparam backgroundColor #ffffff
+skinparam shadowing false
+skinparam ArrowColor #1E40AF
+skinparam ActivityBorderColor #2563EB
+skinparam ActivityBackgroundColor #F8FAFC
+
+start
+:User uploads PDF;
+:Create/attach IMPORT_EXCEL_BC;
+:Trigger extract_pdf_items task;
+:Read PDF text with pdfplumber;
+
+if (Text extracted?) then (yes)
+  :Call AIExtractor.extract_from_text;
+else (no)
+  :Raise extraction error;
+  stop
+endif
+
+if (LLM extraction success?) then (yes)
+  :Use structured LLM result;
+else (no)
+  :Use deterministic fallback parser;
+endif
+
+:Normalize rows (NLP + mapping);
+:Create STAGING_ITEM rows;
+:Enrich MARCHE_BC;
+:Set statut_import=brouillon;
+stop
+@enduml

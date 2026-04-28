@@ -207,6 +207,3 @@ DECHARGE_TEMPLATE_PATH = env(
 	"DECHARGE_TEMPLATE_PATH",
 	default=BASE_DIR / "templates" / "decharge" / "decharge_template.xlsx",
 )
-
-OPENROUTER_API_KEY = env("OPENROUTER_API_KEY", default="")
-OPENROUTER_MODEL = env("OPENROUTER_MODEL", default="openai/gpt-4o-mini")

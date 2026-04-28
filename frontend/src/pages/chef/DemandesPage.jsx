@@ -13,10 +13,9 @@ function Badge({ value, type }) {
   };
   const statusColors = {
     en_cours: { bg: '#dbeafe', color: '#1e3a8a' },
-    validee: { bg: '#bbf7d0', color: '#14532d' },
+    partielle: { bg: '#fde68a', color: '#78350f' },
+    totale: { bg: '#bbf7d0', color: '#14532d' },
     refusee: { bg: '#fecaca', color: '#991b1b' },
-    complete: { bg: '#99f6e4', color: '#134e4a' },
-    complete_avec_decharge: { bg: '#99f6e4', color: '#134e4a' },
   };
 
   const palette = type === 'urgence' ? urgencyColors : statusColors;

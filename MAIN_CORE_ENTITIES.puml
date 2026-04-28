@@ -1,0 +1,251 @@
+@startuml
+title FMPDF - Main and Core Entities
+
+skinparam classAttributeIconSize 0
+skinparam class {
+  BackgroundColor #F8FAFC
+  BorderColor #2563EB
+  ArrowColor #1E40AF
+}
+skinparam linetype ortho
+skinparam nodesep 55
+skinparam ranksep 70
+
+' Core identity and organization
+entity "ROLE" as ROLE {
+  * id_role : INTEGER <<PK>>
+  --
+  * nom_role : VARCHAR(100)
+}
+
+entity "SERVICE" as SERVICE {
+  * id_service : INTEGER <<PK>>
+  --
+  * nom_service : VARCHAR(200)
+  * type_service : ENUM
+}
+
+entity "UTILISATEUR" as USER {
+  * id_utilisateur : INTEGER <<PK>>
+  --
+  * nom_complet : VARCHAR(200)
+  * email : VARCHAR(200)
+  * actif : BOOLEAN
+  --
+  # id_role : INTEGER <<FK>>
+  # id_service : INTEGER <<FK>>
+}
+
+entity "FOURNISSEUR" as SUPPLIER {
+  * id_fournisseur : INTEGER <<PK>>
+  --
+  * nom_societe : VARCHAR(255)
+  * email : VARCHAR(200)
+  * telephone : VARCHAR(20)
+  --
+  # id_utilisateur : INTEGER <<FK>> (nullable)
+}
+
+' Procurement core
+entity "MARCHE_BC" as MARKET {
+  * id_marche : INTEGER <<PK>>
+  --
+  * reference : VARCHAR(100)
+  * type_acquisition : ENUM
+  * date_creation : DATE
+  * date_livraison_prevue : DATE
+  * statut : ENUM
+  --
+  # id_fournisseur : INTEGER <<FK>>
+  # id_cree_par : INTEGER <<FK>>
+}
+
+entity "IMPORT_EXCEL_BC" as IMPORT {
+  * id_import : INTEGER <<PK>>
+  --
+  * fichier_excel_original : VARCHAR(500)
+  * statut_import : ENUM
+  * source_type : ENUM
+  --
+  # id_marche : INTEGER <<FK>>
+  # id_importe_par : INTEGER <<FK>>
+}
+
+entity "STAGING_ITEM" as STAGING {
+  * id_staging : INTEGER <<PK>>
+  --
+  * designation_brute : VARCHAR(500)
+  * designation_normalisee : VARCHAR(255)
+  * quantite : INTEGER
+  * type_detecte : ENUM
+  * categorie_suggeree_nom : VARCHAR(200)
+  * sous_categorie_suggeree_nom : VARCHAR(200)
+  * confiance_ia : DECIMAL(4,2)
+  * statut : ENUM
+  --
+  # id_import : INTEGER <<FK>>
+  # id_categorie_suggeree : INTEGER <<FK>>
+  # id_ressource_liee : INTEGER <<FK>>
+}
+
+entity "LOT_ARTICLE" as LOT {
+  * id_lot : INTEGER <<PK>>
+  --
+  * numero_lot : INTEGER
+  * designation : VARCHAR(255)
+  * quantite_commandee : INTEGER
+  * quantite_recue : INTEGER
+  --
+  # id_marche : INTEGER <<FK>>
+  # id_ressource : INTEGER <<FK>>
+}
+
+' Request and decharge core
+entity "DEMANDE" as REQUEST {
+  * id_demande : INTEGER <<PK>>
+  --
+  * date_demande : TIMESTAMP
+  * urgence : ENUM
+  * statut : ENUM
+  --
+  # id_chef_demandeur : INTEGER <<FK>>
+  # id_service : INTEGER <<FK>>
+  # id_valide_par : INTEGER <<FK>>
+}
+
+entity "LIGNE_DEMANDE" as REQUEST_LINE {
+  * id_ligne : INTEGER <<PK>>
+  --
+  * quantite_demandee : INTEGER
+  * quantite_validee : INTEGER
+  * observation : TEXT
+  --
+  # id_demande : INTEGER <<FK>>
+  # id_ressource : INTEGER <<FK>>
+}
+
+entity "DECHARGE" as DECHARGE {
+  * id_decharge : INTEGER <<PK>>
+  --
+  * numero_decharge : VARCHAR(50)
+  * date_generation : TIMESTAMP
+  * statut : ENUM
+  --
+  # id_demande : INTEGER <<FK>>
+  # id_preparee_par : INTEGER <<FK>>
+  # id_signee_par : INTEGER <<FK>>
+}
+
+entity "LIGNE_DECHARGE" as DECHARGE_LINE {
+  * id_ligne_decharge : INTEGER <<PK>>
+  --
+  * type_ligne : ENUM
+  * quantite : INTEGER
+  * observation : TEXT
+  --
+  # id_decharge : INTEGER <<FK>>
+  # id_ressource : INTEGER <<FK>>
+  # id_instance_ressource : INTEGER <<FK>>
+}
+
+' Stock and resource core
+entity "CATEGORIE" as CATEGORY {
+  * id_categorie : INTEGER <<PK>>
+  --
+  * nom_categorie : VARCHAR(200)
+}
+
+entity "SOUS_CATEGORIE" as SUBCATEGORY {
+  * id_sous_categorie : INTEGER <<PK>>
+  --
+  * nom_sous_categorie : VARCHAR(200)
+  --
+  # id_categorie : INTEGER <<FK>>
+}
+
+entity "RESSOURCE" as RESOURCE {
+  * id_ressource : INTEGER <<PK>>
+  --
+  * designation : VARCHAR(255)
+  * unite_mesure : VARCHAR(20)
+  --
+  # id_categorie : INTEGER <<FK>>
+  # id_sous_categorie : INTEGER <<FK>>
+}
+
+entity "STOCK" as STOCK {
+  * id_stock : INTEGER <<PK>>
+  --
+  * quantite_disponible : INTEGER
+  * seuil_alerte : INTEGER
+  --
+  # id_ressource : INTEGER <<FK>>
+}
+
+entity "INSTANCE_RESSOURCE" as INSTANCE {
+  * id_instance : INTEGER <<PK>>
+  --
+  * numero_inventaire : VARCHAR(50)
+  * date_acquisition : DATE
+  * statut : ENUM
+  * etat : ENUM
+  --
+  # id_ressource : INTEGER <<FK>>
+  # id_service_actuel : INTEGER <<FK>>
+  # id_lot : INTEGER <<FK>>
+}
+
+entity "MOUVEMENT_STOCK" as MOVEMENT {
+  * id_mouvement : INTEGER <<PK>>
+  --
+  * type_mouvement : ENUM
+  * quantite : INTEGER
+  * date_mouvement : TIMESTAMP
+  --
+  # id_ressource : INTEGER <<FK>>
+  # id_instance_ressource : INTEGER <<FK>>
+  # id_utilisateur : INTEGER <<FK>>
+}
+
+' Main relationships
+ROLE ||--o{ USER
+SERVICE ||--o{ USER
+USER ||--o| SUPPLIER
+
+SUPPLIER ||--o{ MARKET
+USER ||--o{ MARKET : cree
+MARKET ||--|| IMPORT
+USER ||--o{ IMPORT : importe
+IMPORT ||--o{ STAGING
+
+CATEGORY ||--o{ SUBCATEGORY
+CATEGORY ||--o{ RESOURCE
+SUBCATEGORY ||--o{ RESOURCE
+
+RESOURCE ||--o{ STOCK
+RESOURCE ||--o{ INSTANCE
+RESOURCE ||--o{ LOT
+MARKET ||--o{ LOT
+LOT ||--o{ INSTANCE
+
+USER ||--o{ REQUEST : demande
+SERVICE ||--o{ REQUEST
+USER ||--o{ REQUEST : valide
+REQUEST ||--o{ REQUEST_LINE
+RESOURCE ||--o{ REQUEST_LINE
+
+REQUEST ||--|| DECHARGE
+USER ||--o{ DECHARGE : prepare
+USER ||--o{ DECHARGE : signe
+DECHARGE ||--o{ DECHARGE_LINE
+RESOURCE ||--o{ DECHARGE_LINE
+INSTANCE ||--o{ DECHARGE_LINE
+
+CATEGORY ||--o{ STAGING : suggestion
+RESOURCE ||--o{ STAGING : liaison
+
+RESOURCE ||--o{ MOVEMENT
+INSTANCE ||--o{ MOVEMENT
+USER ||--o{ MOVEMENT
+
+@enduml

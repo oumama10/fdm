@@ -1,19 +1,20 @@
 import React from 'react';
+import { cn } from '@/lib/utils';
 
-const variantStyles = {
-  default: { background: '#111827', color: '#fff', border: '1px solid #111827' },
-  destructive: { background: '#b91c1c', color: '#fff', border: '1px solid #b91c1c' },
-  outline: { background: '#fff', color: '#111827', border: '1px solid #d1d5db' },
-  secondary: { background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb' },
-  ghost: { background: 'transparent', color: '#111827', border: '1px solid transparent' },
-  link: { background: 'transparent', color: '#2563eb', border: 'none', textDecoration: 'underline' },
+const variantClasses = {
+  default: 'btn btn-primary',
+  destructive: 'btn btn-danger',
+  outline: 'btn btn-secondary',
+  secondary: 'btn btn-secondary',
+  ghost: 'btn bg-transparent text-black/60 border border-transparent hover:bg-black/5',
+  link: 'btn bg-transparent border-none text-[var(--brand-700)] underline p-0',
 };
 
-const sizeStyles = {
-  default: { height: 40, padding: '0 16px', fontSize: 14 },
-  sm: { height: 36, padding: '0 12px', fontSize: 13 },
-  lg: { height: 44, padding: '0 20px', fontSize: 15 },
-  icon: { height: 40, width: 40, padding: 0, fontSize: 14 },
+const sizeClasses = {
+  default: 'h-10 px-4 text-sm',
+  sm: 'h-9 px-3 text-xs',
+  lg: 'h-11 px-5 text-sm',
+  icon: 'h-10 w-10 p-0',
 };
 
 export const Button = React.forwardRef(function Button(
@@ -23,19 +24,13 @@ export const Button = React.forwardRef(function Button(
   return (
     <button
       ref={ref}
-      style={{
-        borderRadius: 8,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        cursor: props.disabled ? 'not-allowed' : 'pointer',
-        opacity: props.disabled ? 0.6 : 1,
-        ...sizeStyles[size],
-        ...variantStyles[variant],
-        ...style,
-      }}
-      className={className}
+      style={style}
+      className={cn(
+        'inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed',
+        variantClasses[variant],
+        sizeClasses[size],
+        className
+      )}
       {...props}
     >
       {children}

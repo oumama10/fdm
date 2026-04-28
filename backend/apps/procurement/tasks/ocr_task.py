@@ -19,13 +19,13 @@ def _mark_rejected(import_id: int, observations: str | None = None) -> None:
             imp = ImportExcelBC.objects.select_for_update().filter(pk=import_id).first()
             if not imp:
                 return
-            imp.statut_import = "rejete"
+            imp.statut_import = "non_conforme"
             if observations:
                 imp.observations = observations[:2000]
                 imp.save(update_fields=["statut_import", "observations"])
             else:
                 imp.save(update_fields=["statut_import"])
-            logger.info("[TASK] import %s marked as rejete", import_id)
+            logger.info("[TASK] import %s marked as non_conforme", import_id)
     except Exception:
         logger.exception("[TASK] could not mark import %s as rejected", import_id)
 
@@ -39,7 +39,7 @@ def extract_excel_items(self, import_id: int, retry_enabled: bool = True) -> Non
     try:
         with transaction.atomic():
             import_obj = ImportExcelBC.objects.select_for_update().get(pk=import_id)
-            import_obj.statut_import = "en_revision"
+            import_obj.statut_import = "en_attente"
             import_obj.save(update_fields=["statut_import"])
 
         file_path = import_obj.fichier_excel_original.path
@@ -72,7 +72,7 @@ def extract_excel_items(self, import_id: int, retry_enabled: bool = True) -> Non
             try:
                 items = AIExtractor.extract_from_text(raw_text)
             except Exception as exc:
-                logger.exception("LLM extraction failed")
+                logger.exception("Library-based extraction failed")
                 raise RuntimeError("AI extraction failed") from exc
 
             logger.info("AI returned %s items", len(items))
@@ -105,18 +105,43 @@ def extract_excel_items(self, import_id: int, retry_enabled: bool = True) -> Non
 
                 quantity = AIExtractor._coerce_int(item.get("quantite", item.get("quantity", 1)), default=1)
 
+                # Apply NLP normalization to get category suggestions
+                from apps.procurement.tasks.nlp_normalizer import normalize_designation
+                normalized = normalize_designation(designation)
+
+                # Resolve category instance if ID provided
+                categorie_instance = None
+                if normalized.get("id_categorie_suggeree"):
+                    from apps.resources.models import Categorie
+                    try:
+                        categorie_instance = Categorie.objects.get(id_categorie=normalized["id_categorie_suggeree"])
+                    except Categorie.DoesNotExist:
+                        categorie_instance = None
+
+                # Resolve resource instance if ID provided
+                ressource_instance = None
+                if normalized.get("id_ressource_liee"):
+                    from apps.resources.models import Ressource
+                    try:
+                        ressource_instance = Ressource.objects.get(id_ressource=normalized["id_ressource_liee"])
+                    except Ressource.DoesNotExist:
+                        ressource_instance = None
+
                 staging_items.append(
                     StagingItem(
                         id_import=import_obj,
                         designation_brute=designation[:500],
                         description=description[:4000],
-                        designation_normalisee=designation.lower()[:255],
+                        designation_normalisee=normalized["designation_normalisee"],
                         quantite=quantity,
                         unite=str(item.get("unite") or "U"),
                         prix_unitaire_ht=item.get("prix_unitaire_ht"),
                         prix_total_ht=item.get("prix_total_ht"),
-                        confiance_ia=Decimal("0.90"),
-                        type_detecte="",
+                        type_detecte=normalized.get("type_detecte", ""),
+                        id_categorie_suggeree=categorie_instance,
+                        categorie_suggeree_nom=normalized.get("categorie_suggeree_nom", ""),
+                        sous_categorie_suggeree_nom=normalized.get("sous_categorie_suggeree_nom", ""),
+                        id_ressource_liee=ressource_instance,
                         statut="en_attente",
                     )
                 )
@@ -129,7 +154,7 @@ def extract_excel_items(self, import_id: int, retry_enabled: bool = True) -> Non
 
             with transaction.atomic():
                 import_final = ImportExcelBC.objects.select_for_update().get(pk=import_id)
-                import_final.statut_import = "brouillon"
+                import_final.statut_import = "en_attente"
                 import_final.save(update_fields=["statut_import"])
 
             logger.info("[TASK] DONE extract_excel_items import_id=%s", import_id)

@@ -4,6 +4,20 @@ from django.urls import reverse
 
 
 class Demande(models.Model):
+    TYPE_DEMANDEUR_CHOICES = [
+        ("service", "service"),
+        ("decanat", "decanat"),
+        ("pharmacie", "pharmacie"),
+        ("dentaire", "dentaire"),
+        ("labo", "labo"),
+        ("association", "association"),
+        ("chu", "chu"),
+    ]
+    BENEFICIAIRE_TYPE_CHOICES = [
+        ("personnel", "personnel"),
+        ("unite", "unite"),
+        ("lieu", "lieu"),
+    ]
     URGENCE_CHOICES = [
         ("normal", "normal"),
         ("moyen", "moyen"),
@@ -11,10 +25,8 @@ class Demande(models.Model):
     ]
     STATUT_CHOICES = [
         ("en_cours", "en_cours"),
-        ("validee", "validee"),
-        ("en_preparation", "en_preparation"),
-        ("complete_avec_decharge", "complete_avec_decharge"),
         ("partielle", "partielle"),
+        ("totale", "totale"),
         ("refusee", "refusee"),
     ]
 
@@ -22,6 +34,10 @@ class Demande(models.Model):
     date_demande = models.DateTimeField(auto_now_add=True)
     urgence = models.CharField(max_length=10, choices=URGENCE_CHOICES, default="normal")
     statut = models.CharField(max_length=30, choices=STATUT_CHOICES, default="en_cours")
+    type_demandeur = models.CharField(max_length=20, choices=TYPE_DEMANDEUR_CHOICES, default="service")
+    beneficiaire_type = models.CharField(max_length=20, choices=BENEFICIAIRE_TYPE_CHOICES, blank=True, default="")
+    beneficiaire_nom = models.CharField(max_length=200, blank=True, default="")
+    beneficiaire_detail = models.CharField(max_length=255, blank=True, default="")
     justification = models.TextField(blank=True)
     date_validation = models.DateTimeField(null=True, blank=True)
     commentaire_validation = models.TextField(blank=True)

@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useLocation, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 
 import {
   getImports,
@@ -8,6 +9,7 @@ import {
   getStagingItems,
 } from '../../api/procurement';
 import PageBackButton from '../../components/ui/PageBackButton';
+import { useAuthStore } from '../../store/authStore';
 
 function pickValue(obj, keys, fallback = null) {
   if (!obj) return fallback;
@@ -32,9 +34,12 @@ function formatMoney(value) {
 
 export default function MarcheDetailPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user } = useAuthStore();
   const location = useLocation();
   const basePrefix = location.pathname.startsWith('/financiere') ? '/financiere' : '/gestionnaire';
+  const userRole = user?.id_role?.nom_role || user?.role;
+  const isGestionnaire = userRole === 'gestionnaire_magasin' || userRole === 'admin';
 
   const marcheQuery = useQuery({
     queryKey: ['procurement', 'marche', id],
@@ -91,6 +96,7 @@ export default function MarcheDetailPage() {
     [stagingItems]
   );
 
+
   if (marcheQuery.isLoading) {
     return <div style={{ height: 220, borderRadius: 10, background: '#f3f4f6' }} />;
   }
@@ -102,11 +108,11 @@ export default function MarcheDetailPage() {
   const hideExtractedAfterSubmit = ['receptionne_et_stocke', 'non_conforme'].includes(marche?.statut);
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
+    <div className="page-stack">
       <div style={pageHeaderStyle}>
         <PageBackButton to={`${basePrefix}/marches`} label="Marchés" hint="Revenir à la liste" />
         <div>
-          <h1 style={{ margin: 0 }}>Détail du marché</h1>
+          <h1 className="page-title">Détail du marché</h1>
           <div style={{ marginTop: 4, color: '#64748b', fontSize: 13 }}>
             {marche?.statut ? `Statut actuel : ${marche.statut}` : 'Vue détaillée du marché et de ses données extraites.'}
           </div>
@@ -114,15 +120,17 @@ export default function MarcheDetailPage() {
       </div>
 
       {hideExtractedAfterSubmit ? (
-        <section style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Informations extraites</h3>
+        <section className="section-shell">
+          <h3 className="section-title">Informations extraites</h3>
           <div style={{ color: '#6b7280' }}>
             Ces données ont déjà été soumises. Elles ne sont plus affichées dans cette étape.
           </div>
         </section>
       ) : importExcel ? (
-        <section style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Informations extraites</h3>
+        <section className="section-shell">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <h3 className="section-title" style={{ marginBottom: 0 }}>Informations extraites</h3>
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 12, fontSize: 14 }}>
             <div><strong>Titre:</strong> {pickValue(importExcel, ['titre_fichier', 'titreFichier'], '—')}</div>
@@ -139,24 +147,24 @@ export default function MarcheDetailPage() {
           ) : normalizedRows.length === 0 ? (
             <div style={{ color: '#6b7280' }}>Aucune ligne extraite.</div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <table className="data-table" style={{ fontSize: 14 }}>
               <thead>
-                <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                  <th style={thStyle}>Désignation</th>
-                  <th style={thStyle}>Description</th>
-                  <th style={thStyle}>Quantité</th>
-                  <th style={thStyle}>PU HT</th>
-                  <th style={thStyle}>PT HT</th>
+                <tr>
+                  <th>Désignation</th>
+                  <th>Description</th>
+                  <th>Quantité</th>
+                  <th>PU HT</th>
+                  <th>PT HT</th>
                 </tr>
               </thead>
               <tbody>
                 {normalizedRows.map((item) => (
-                  <tr key={item.key} style={{ borderTop: '1px solid #f3f4f6' }}>
-                    <td style={tdStyle}>{item.designation}</td>
-                    <td style={tdStyle}>{item.description}</td>
-                    <td style={tdStyle}>{item.quantite}</td>
-                    <td style={tdStyle}>{formatMoney(item.prixUnitaire)}</td>
-                    <td style={tdStyle}>{formatMoney(item.prixTotal)}</td>
+                  <tr key={item.key}>
+                    <td>{item.designation}</td>
+                    <td>{item.description}</td>
+                    <td>{item.quantite}</td>
+                    <td>{formatMoney(item.prixUnitaire)}</td>
+                    <td>{formatMoney(item.prixTotal)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -164,26 +172,15 @@ export default function MarcheDetailPage() {
           )}
         </section>
       ) : (
-        <section style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Informations extraites</h3>
+        <section className="section-shell">
+          <h3 className="section-title">Informations extraites</h3>
           <div style={{ color: '#6b7280' }}>Aucune information extraite pour ce marché.</div>
         </section>
       )}
+
     </div>
   );
 }
-
-const sectionStyle = {
-  border: '1px solid #e5e7eb',
-  borderRadius: 12,
-  background: '#fff',
-  padding: 12,
-};
-
-const sectionTitleStyle = {
-  marginTop: 0,
-  marginBottom: 10,
-};
 
 const pageHeaderStyle = {
   display: 'flex',
@@ -192,5 +189,3 @@ const pageHeaderStyle = {
   padding: '4px 0',
 };
 
-const thStyle = { padding: 8, fontWeight: 600 };
-const tdStyle = { padding: 8 };

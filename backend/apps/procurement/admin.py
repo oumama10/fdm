@@ -26,7 +26,7 @@ class ImportExcelBCAdmin(admin.ModelAdmin):
 
 @admin.register(StagingItem)
 class StagingItemAdmin(admin.ModelAdmin):
-    list_display = ["designation_brute", "description", "designation_normalisee", "quantite", "confiance_ia", "statut"]
+    list_display = ["designation_brute", "description", "designation_normalisee", "quantite", "statut"]
     list_filter = ["statut", "type_detecte"]
     search_fields = ["designation_brute", "designation_normalisee"]
 

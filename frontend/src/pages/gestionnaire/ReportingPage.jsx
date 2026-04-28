@@ -8,13 +8,13 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   BarChart,
   Bar,
   PieChart,
   Pie,
   Cell,
 } from 'recharts';
+import { AlertTriangle, ArrowDown, ArrowUp, Download, Package } from 'lucide-react';
 
 import {
   getBilanAnnuel,
@@ -26,10 +26,16 @@ import { getRessources } from '../../api/resources';
 import { getLots, getMarches } from '../../api/procurement';
 
 const STALE_TIME = 30_000;
-const PIE_COLORS = ['#2563eb', '#16a34a', '#dc2626', '#7c3aed', '#ea580c'];
+const PIE_COLORS = ['#0f6e56', '#9a6e1a', '#1f7663', '#0b3d4a', '#7d8f89'];
+const YEAR_RANGE = 5;
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString('fr-FR');
+}
+
+function formatTimestamp(value) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('fr-FR');
 }
 
 function sumByKey(rows, key) {
@@ -52,19 +58,132 @@ function inDateRange(dateValue, dateDebut, dateFin) {
   return true;
 }
 
-function alerteBadge(isAlerte) {
-  return isAlerte ? (
-    <span style={{ ...pillStyle, background: '#fee2e2', color: '#991b1b' }}>Alerte</span>
-  ) : (
-    <span style={{ ...pillStyle, background: '#dcfce7', color: '#166534' }}>OK</span>
+function MetricDelta({ tone = 'neutral', children }) {
+  const toneClass =
+    tone === 'up'
+      ? 'text-[#0F6E56]'
+      : tone === 'down'
+        ? 'text-[#A32D2D]'
+        : 'text-black/40';
+  const Icon = tone === 'up' ? ArrowUp : tone === 'down' ? ArrowDown : null;
+
+  return (
+    <div className={`text-[11px] flex items-center gap-[3px] mt-1 ${toneClass}`}>
+      {Icon ? <Icon size={12} strokeWidth={2.25} /> : null}
+      <span>{children}</span>
+    </div>
   );
 }
 
-function sectionCard(children) {
+function SectionCard({ children }) {
   return (
-    <section style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 12 }}>
+    <section className="rounded-2xl bg-white border border-black/[0.06] p-5 overflow-hidden">
       {children}
     </section>
+  );
+}
+
+function LegendRow({ items }) {
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      {items.map(({ color, label }) => (
+        <div key={label} className="flex items-center gap-1.5 text-[11px] text-black/50">
+          <span className="w-2 h-2 rounded-[2px] inline-block" style={{ background: color }} />
+          {label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TableEmptyState({ columnCount }) {
+  return (
+    <tr>
+      <td colSpan={columnCount} className="py-10 text-center">
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-9 h-9 rounded-full bg-surface flex items-center justify-center">
+            <Package size={16} className="text-black/25" />
+          </div>
+          <p className="text-[13px] text-black/35">Aucun article trouvé</p>
+          <p className="text-[11px] text-black/25">Les données apparaîtront ici une fois importées</p>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function DataFooter({ total, alertCount, okCount, columnCount }) {
+  return (
+    <tfoot>
+      <tr className="bg-surface">
+        <td className="px-[14px] py-[9px] text-[11px] text-black/40">
+          {total} articles au total
+        </td>
+        <td colSpan={Math.max(columnCount - 1, 1)} className="px-[14px] py-[9px] text-[11px] text-black/35 text-right">
+          {alertCount} alertes · {okCount} OK
+        </td>
+      </tr>
+    </tfoot>
+  );
+}
+
+function TableShell({ columns, rows, renderRow, total, alertCount, okCount }) {
+  return (
+    <table className="data-table text-[14px]">
+      <thead>
+        <tr>
+          {columns.map((column) => (
+            <th key={column} className="font-semibold">
+              {column}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <TableEmptyState columnCount={columns.length} />
+        ) : (
+          rows.map((row, index) => renderRow(row, index))
+        )}
+      </tbody>
+      <DataFooter total={total} alertCount={alertCount} okCount={okCount} columnCount={columns.length} />
+    </table>
+  );
+}
+
+function StatField({ label, children, className = '' }) {
+  return (
+    <label className={`bg-white border border-black/[0.07] rounded-xl px-3 py-2 flex flex-col text-xs ${className}`}>
+      <span className="text-[10px] uppercase tracking-[.05em] text-black/35 mb-0.5">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function MetricCard({ label, value, accent = '#7d8f89', deltaTone = 'neutral', deltaText }) {
+  return (
+    <div className="bg-white rounded-2xl p-5 border border-black/[0.06] relative overflow-hidden">
+      <span className="absolute top-0 left-0 bottom-0 w-[3px]" style={{ background: accent }} />
+      <div className="text-[10px] uppercase tracking-[.06em] text-black/40 mb-[5px]">{label}</div>
+      <div className="font-headings text-[26px] font-semibold text-ink leading-none">{value}</div>
+      <MetricDelta tone={deltaTone}>{deltaText}</MetricDelta>
+    </div>
+  );
+}
+
+function TabsPill({ active, onClick, children, activeClassName }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? `rounded-[9px] px-4 py-[7px] text-sm font-medium ${activeClassName}`
+          : 'rounded-[9px] px-4 py-[7px] text-sm text-black/45 hover:text-black/70 hover:bg-black/[0.04] transition'
+      }
+    >
+      {children}
+    </button>
   );
 }
 
@@ -73,17 +192,14 @@ export default function ReportingPage() {
 
   const [mainTab, setMainTab] = useState('stock');
   const [stockSubTab, setStockSubTab] = useState('instantane');
-
+  const [periodicSubmitted, setPeriodicSubmitted] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(currentYear);
   const [periodicForm, setPeriodicForm] = useState({
     id_ressource: '',
     date_debut: '',
     date_fin: '',
     unite: 'mois',
   });
-  const [periodicSubmitted, setPeriodicSubmitted] = useState(false);
-
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-
   const [achatsFilters, setAchatsFilters] = useState({
     date_debut: '',
     date_fin: '',
@@ -138,23 +254,22 @@ export default function ReportingPage() {
     staleTime: STALE_TIME,
   });
 
-  const stockInstantane = stockInstantaneQuery.data?.data || {
-    consommables: [],
-    bien_inventaire: [],
-  };
+  const stockInstantane = stockInstantaneQuery.data?.data || { consommables: [], bien_inventaire: [] };
+  const stockConsommables = stockInstantane.consommables || [];
+  const stockBienInventaire = stockInstantane.bien_inventaire || [];
+  const consommablesEnAlerte = stockConsommables.filter((row) => row.alerte);
+  const consommablesSousSeuil = stockConsommables.filter(
+    (row) => Number(row.quantite_disponible || 0) < Number(row.seuil_alerte || 0)
+  );
 
   const periodicChartData = useMemo(() => {
     const payload = stockPeriodiqueQuery.data?.data;
     if (!payload) return [];
 
-    const labels = payload.labels || [];
-    const entrees = payload.entrees || [];
-    const sorties = payload.sorties || [];
-
-    return labels.map((label, index) => ({
+    return (payload.labels || []).map((label, index) => ({
       periode: label,
-      entrees: Number(entrees[index] || 0),
-      sorties: Number(sorties[index] || 0),
+      entrees: Number(payload.entrees?.[index] || 0),
+      sorties: Number(payload.sorties?.[index] || 0),
     }));
   }, [stockPeriodiqueQuery.data?.data]);
 
@@ -188,7 +303,6 @@ export default function ReportingPage() {
 
   const entitePieData = useMemo(() => {
     const rows = bilanData?.consommation_par_entite || [];
-
     const map = new Map([
       ['Médecine', 0],
       ['Pharmacie', 0],
@@ -259,523 +373,634 @@ export default function ReportingPage() {
       .slice(0, 5);
 
     return { topArticles, topFournisseurs };
-  }, [marchesQuery.data?.data, lotsQuery.data?.data, achatsFilters.date_debut, achatsFilters.date_fin, achatsFilters.type_acquisition]);
+  }, [marchesQuery.data?.data, lotsQuery.data?.data, achatsFilters.date_debut, achatsFilters.date_fin, achatsFilters.type_acquisition, achatsFilters.entite]);
 
   const ressources = ressourcesQuery.data?.data || [];
+  const lastUpdatedAt = Math.max(
+    stockInstantaneQuery.dataUpdatedAt || 0,
+    stockPeriodiqueQuery.dataUpdatedAt || 0,
+    bilanAnnuelQuery.dataUpdatedAt || 0,
+    achatsStatsQuery.dataUpdatedAt || 0
+  );
+  const lastUpdatedLabel = formatTimestamp(lastUpdatedAt || Date.now());
+  const yearOptions = Array.from({ length: YEAR_RANGE }, (_, index) => currentYear - index);
+  const chartLegendItems = [
+    { color: '#1D9E75', label: 'Entrées' },
+    { color: '#9FE1CB', label: 'Sorties' },
+  ];
+
+  const stockKpis = [
+    {
+      label: 'Alertes',
+      value: formatNumber(consommablesEnAlerte.length),
+      accent: '#A32D2D',
+      deltaTone: consommablesEnAlerte.length > 0 ? 'down' : 'neutral',
+      deltaText: consommablesEnAlerte.length > 0 ? `${consommablesEnAlerte.length} à traiter` : 'Aucune alerte',
+    },
+    {
+      label: 'Valeur',
+      value: formatNumber(sumByKey(stockConsommables, 'quantite_disponible')),
+      accent: '#7d8f89',
+      deltaTone: 'neutral',
+      deltaText: 'Total instantané',
+    },
+    {
+      label: 'Sous seuil',
+      value: formatNumber(consommablesSousSeuil.length),
+      accent: '#A32D2D',
+      deltaTone: consommablesSousSeuil.length > 0 ? 'down' : 'neutral',
+      deltaText: consommablesSousSeuil.length > 0 ? `${consommablesSousSeuil.length} en dessous` : 'Seuil respecté',
+    },
+    {
+      label: 'Rotation',
+      value: formatNumber(sumByKey(stockBienInventaire, 'en_service')),
+      accent: '#9a6e1a',
+      deltaTone: stockBienInventaire.length > 0 ? 'up' : 'neutral',
+      deltaText: stockBienInventaire.length > 0 ? 'En service' : 'Aucune donnée',
+    },
+  ];
+
+  const bilanKpis = [
+    {
+      label: 'Acquisitions',
+      value: formatNumber(bilanSummary.totalAcquisitions),
+      accent: '#1D9E75',
+      deltaTone: 'up',
+      deltaText: 'Flux d’entrées',
+    },
+    {
+      label: 'Sorties',
+      value: formatNumber(bilanSummary.totalSorties),
+      accent: '#7d8f89',
+      deltaTone: 'down',
+      deltaText: 'Flux sortants',
+    },
+    {
+      label: 'Donations',
+      value: formatNumber(bilanSummary.totalDonations),
+      accent: '#9a6e1a',
+      deltaTone: 'neutral',
+      deltaText: 'Dons enregistrés',
+    },
+  ];
+
+  const achatsTotal = formatNumber(achatsBarData.reduce((acc, row) => acc + Number(row.total || 0), 0));
+  const achatsKpis = [
+    {
+      label: 'Volume achats',
+      value: achatsTotal,
+      accent: '#1D9E75',
+      deltaTone: 'up',
+      deltaText: 'Total filtré',
+    },
+    {
+      label: 'Articles suivis',
+      value: formatNumber(topData.topArticles.length),
+      accent: '#7d8f89',
+      deltaTone: 'neutral',
+      deltaText: 'Top 10 affiché',
+    },
+    {
+      label: 'Fournisseurs',
+      value: formatNumber(topData.topFournisseurs.length),
+      accent: '#9a6e1a',
+      deltaTone: 'neutral',
+      deltaText: 'Top 5 affiché',
+    },
+  ];
+
+  const renderMainTabButton = (value, label) => (
+    <TabsPill
+      key={value}
+      active={mainTab === value}
+      activeClassName="bg-brand-500 text-white"
+      onClick={() => setMainTab(value)}
+    >
+      {label}
+    </TabsPill>
+  );
+
+  const renderModeButton = (value, label) => (
+    <TabsPill
+      key={value}
+      active={stockSubTab === value}
+      activeClassName="bg-[#1A1A2E] text-white"
+      onClick={() => setStockSubTab(value)}
+    >
+      {label}
+    </TabsPill>
+  );
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <h1 style={{ margin: 0 }}>Reporting</h1>
+    <div className="page-stack">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="font-headings text-[22px] font-semibold text-ink leading-tight">Reporting</h1>
+          <p className="mt-1 text-[11px] text-black/40">Dernière mise à jour : {lastUpdatedLabel}</p>
+        </div>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button style={mainTab === 'stock' ? activeTabStyle : tabStyle} onClick={() => setMainTab('stock')}>
-          État du stock
-        </button>
-        <button style={mainTab === 'bilan' ? activeTabStyle : tabStyle} onClick={() => setMainTab('bilan')}>
-          Bilan Annuel
-        </button>
-        <button style={mainTab === 'achats' ? activeTabStyle : tabStyle} onClick={() => setMainTab('achats')}>
-          Statistiques Achats
+        <button type="button" className="btn btn-primary flex items-center gap-2 rounded-xl">
+          <Download size={16} />
+          Exporter PDF
         </button>
       </div>
 
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="bg-white border border-black/[0.07] rounded-xl p-[3px] flex gap-[2px]">
+          {renderMainTabButton('stock', 'État du stock')}
+          {renderMainTabButton('bilan', 'Bilan annuel')}
+          {renderMainTabButton('achats', 'Statistiques achats')}
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          <div className="bg-white border border-black/[0.07] rounded-xl p-[3px] flex gap-[2px]">
+            {renderModeButton('instantane', 'Instantané')}
+            {renderModeButton('periodique', 'Périodique')}
+          </div>
+
+          <div
+            className={`bg-white border border-black/[0.07] rounded-xl px-3 py-[7px] flex items-center gap-2 text-xs ${
+              stockSubTab === 'instantane' ? 'opacity-50 pointer-events-none' : ''
+            }`}
+          >
+            <span className="text-black/45">Du</span>
+            <input
+              type="date"
+              value={periodicForm.date_debut}
+              disabled={stockSubTab === 'instantane'}
+              onChange={(e) => setPeriodicForm((prev) => ({ ...prev, date_debut: e.target.value }))}
+              className="border-none bg-transparent text-sm text-ink outline-none font-['DM_Sans'] disabled:cursor-not-allowed"
+            />
+            <span className="text-black/45">Au</span>
+            <input
+              type="date"
+              value={periodicForm.date_fin}
+              disabled={stockSubTab === 'instantane'}
+              onChange={(e) => setPeriodicForm((prev) => ({ ...prev, date_fin: e.target.value }))}
+              className="border-none bg-transparent text-sm text-ink outline-none font-['DM_Sans'] disabled:cursor-not-allowed"
+            />
+          </div>
+        </div>
+      </div>
+
+      {mainTab === 'stock' && consommablesEnAlerte.length > 0 ? (
+        <div className="bg-red-50 border border-red-200/60 rounded-xl px-5 py-3 flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={16} className="text-red-600" />
+            <div>
+              <p className="text-sm font-medium text-red-700">
+                {consommablesEnAlerte.length} articles sous seuil d'alerte
+              </p>
+              <p className="text-xs text-red-500/70 mt-0.5">
+                {consommablesEnAlerte.map((item) => item.designation).join(' · ')} — action requise
+              </p>
+            </div>
+          </div>
+          <button type="button" className="bg-red-700 text-white text-xs px-3 py-1.5 rounded-lg">
+            Voir les alertes
+          </button>
+        </div>
+      ) : null}
+
       {mainTab === 'stock' ? (
-        <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              style={stockSubTab === 'instantane' ? activeTabStyle : tabStyle}
-              onClick={() => setStockSubTab('instantane')}
-            >
-              Instantané
-            </button>
-            <button
-              style={stockSubTab === 'periodique' ? activeTabStyle : tabStyle}
-              onClick={() => setStockSubTab('periodique')}
-            >
-              Périodique
-            </button>
+        <div className="grid gap-5">
+          <div className="grid gap-4 md:grid-cols-4">
+            {stockKpis.map((card) => (
+              <MetricCard key={card.label} {...card} />
+            ))}
           </div>
 
           {stockSubTab === 'instantane' ? (
-            <div style={{ display: 'grid', gap: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button style={primaryButton} onClick={() => window.print()}>
-                  Exporter PDF
-                </button>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {sectionCard(
-                  <>
-                    <h3 style={sectionTitleStyle}>Consommables</h3>
-                    <table style={tableStyle}>
-                      <thead>
-                        <tr style={headRowStyle}>
-                          <th style={thStyle}>Désignation</th>
-                          <th style={thStyle}>Qté dispo</th>
-                          <th style={thStyle}>Seuil</th>
-                          <th style={thStyle}>Alerte</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(stockInstantane.consommables || []).map((row) => (
-                          <tr key={row.id} style={bodyRowStyle}>
-                            <td style={tdStyle}>{row.designation}</td>
-                            <td style={tdStyle}>{formatNumber(row.quantite_disponible)}</td>
-                            <td style={tdStyle}>{formatNumber(row.seuil_alerte)}</td>
-                            <td style={tdStyle}>{alerteBadge(row.alerte)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-
-                {sectionCard(
-                  <>
-                    <h3 style={sectionTitleStyle}>Biens Inventaire</h3>
-                    <table style={tableStyle}>
-                      <thead>
-                        <tr style={headRowStyle}>
-                          <th style={thStyle}>Désignation</th>
-                          <th style={thStyle}>Total</th>
-                          <th style={thStyle}>En stock</th>
-                          <th style={thStyle}>En service</th>
-                          <th style={thStyle}>En maintenance</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(stockInstantane.bien_inventaire || []).map((row) => (
-                          <tr key={row.id} style={bodyRowStyle}>
-                            <td style={tdStyle}>{row.designation}</td>
-                            <td style={tdStyle}>{formatNumber(row.total_instances)}</td>
-                            <td style={tdStyle}>{formatNumber(row.en_stock)}</td>
-                            <td style={tdStyle}>{formatNumber(row.en_service)}</td>
-                            <td style={tdStyle}>{formatNumber(row.en_maintenance)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gap: 12 }}>
-              {sectionCard(
-                <>
-                  <h3 style={sectionTitleStyle}>Périodique</h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
-                    <label style={labelStyle}>
-                      Ressource
-                      <select
-                        style={inputStyle}
-                        value={periodicForm.id_ressource}
-                        onChange={(e) => setPeriodicForm((prev) => ({ ...prev, id_ressource: e.target.value }))}
-                      >
-                        <option value="">Sélectionner</option>
-                        {ressources.map((item) => (
-                          <option key={item.id_ressource} value={item.id_ressource}>
-                            {item.designation}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label style={labelStyle}>
-                      Date début
-                      <input
-                        type="date"
-                        style={inputStyle}
-                        value={periodicForm.date_debut}
-                        onChange={(e) => setPeriodicForm((prev) => ({ ...prev, date_debut: e.target.value }))}
-                      />
-                    </label>
-
-                    <label style={labelStyle}>
-                      Date fin
-                      <input
-                        type="date"
-                        style={inputStyle}
-                        value={periodicForm.date_fin}
-                        onChange={(e) => setPeriodicForm((prev) => ({ ...prev, date_fin: e.target.value }))}
-                      />
-                    </label>
-
-                    <label style={labelStyle}>
-                      Unité
-                      <select
-                        style={inputStyle}
-                        value={periodicForm.unite}
-                        onChange={(e) => setPeriodicForm((prev) => ({ ...prev, unite: e.target.value }))}
-                      >
-                        <option value="jour">jour</option>
-                        <option value="mois">mois</option>
-                        <option value="annee">année</option>
-                      </select>
-                    </label>
-
-                    <button
-                      style={primaryButton}
-                      onClick={() => setPeriodicSubmitted(true)}
-                      disabled={!periodicForm.id_ressource}
-                    >
-                      Afficher
-                    </button>
+            <div className="grid gap-5">
+              <div className="grid gap-5 xl:grid-cols-2">
+                <SectionCard>
+                  <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+                    <h3 className="m-0 text-base font-semibold text-ink">Consommables</h3>
                   </div>
-                </>
-              )}
-
-              {sectionCard(
-                <>
-                  <h3 style={sectionTitleStyle}>Évolution</h3>
-                  <div style={{ width: '100%', height: 280 }}>
-                    <ResponsiveContainer>
-                      <LineChart data={periodicChartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="periode" />
-                        <YAxis allowDecimals={false} />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="entrees" stroke="#16a34a" name="Entrées" strokeWidth={2} />
-                        <Line type="monotone" dataKey="sorties" stroke="#dc2626" name="Sorties" strokeWidth={2} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </>
-              )}
-
-              {sectionCard(
-                <>
-                  <h3 style={sectionTitleStyle}>Résumé</h3>
-                  <table style={tableStyle}>
-                    <thead>
-                      <tr style={headRowStyle}>
-                        <th style={thStyle}>Période</th>
-                        <th style={thStyle}>Entrées</th>
-                        <th style={thStyle}>Sorties</th>
+                  <TableShell
+                    columns={['Désignation', 'Qté dispo', 'Seuil', 'Alerte']}
+                    rows={stockConsommables}
+                    total={stockConsommables.length}
+                    alertCount={consommablesEnAlerte.length}
+                    okCount={stockConsommables.length - consommablesEnAlerte.length}
+                    renderRow={(row) => (
+                      <tr key={row.id}>
+                        <td>{row.designation}</td>
+                        <td>{formatNumber(row.quantite_disponible)}</td>
+                        <td>{formatNumber(row.seuil_alerte)}</td>
+                        <td>
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                              row.alerte ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
+                            }`}
+                          >
+                            {row.alerte ? 'Alerte' : 'OK'}
+                          </span>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {periodicChartData.map((row) => (
-                        <tr key={row.periode} style={bodyRowStyle}>
-                          <td style={tdStyle}>{row.periode}</td>
-                          <td style={tdStyle}>{formatNumber(row.entrees)}</td>
-                          <td style={tdStyle}>{formatNumber(row.sorties)}</td>
-                        </tr>
+                    )}
+                  />
+                </SectionCard>
+
+                <SectionCard>
+                  <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+                    <h3 className="m-0 text-base font-semibold text-ink">Biens inventaire</h3>
+                  </div>
+                  <TableShell
+                    columns={['Désignation', 'Total', 'En stock', 'En service', 'En maintenance']}
+                    rows={stockBienInventaire}
+                    total={stockBienInventaire.length}
+                    alertCount={0}
+                    okCount={stockBienInventaire.length}
+                    renderRow={(row) => (
+                      <tr key={row.id}>
+                        <td>{row.designation}</td>
+                        <td>{formatNumber(row.total_instances)}</td>
+                        <td>{formatNumber(row.en_stock)}</td>
+                        <td>{formatNumber(row.en_service)}</td>
+                        <td>{formatNumber(row.en_maintenance)}</td>
+                      </tr>
+                    )}
+                  />
+                </SectionCard>
+              </div>
+
+              <SectionCard>
+                <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+                  <h3 className="m-0 text-base font-semibold text-ink">Périodique</h3>
+                </div>
+                <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_1fr_auto] items-end">
+                  <StatField label="Ressource">
+                    <select
+                      className="border-none bg-transparent text-sm text-ink outline-none font-['DM_Sans']"
+                      value={periodicForm.id_ressource}
+                      onChange={(e) => setPeriodicForm((prev) => ({ ...prev, id_ressource: e.target.value }))}
+                    >
+                      <option value="">Sélectionner</option>
+                      {ressources.map((item) => (
+                        <option key={item.id_ressource} value={item.id_ressource}>
+                          {item.designation}
+                        </option>
                       ))}
-                    </tbody>
-                  </table>
-                </>
-              )}
+                    </select>
+                  </StatField>
+
+                  <StatField label="Date début">
+                    <input
+                      type="date"
+                      value={periodicForm.date_debut}
+                      onChange={(e) => setPeriodicForm((prev) => ({ ...prev, date_debut: e.target.value }))}
+                      className="border-none bg-transparent text-sm text-ink outline-none font-['DM_Sans']"
+                    />
+                  </StatField>
+
+                  <StatField label="Date fin">
+                    <input
+                      type="date"
+                      value={periodicForm.date_fin}
+                      onChange={(e) => setPeriodicForm((prev) => ({ ...prev, date_fin: e.target.value }))}
+                      className="border-none bg-transparent text-sm text-ink outline-none font-['DM_Sans']"
+                    />
+                  </StatField>
+
+                  <StatField label="Unité">
+                    <select
+                      className="border-none bg-transparent text-sm text-ink outline-none font-['DM_Sans']"
+                      value={periodicForm.unite}
+                      onChange={(e) => setPeriodicForm((prev) => ({ ...prev, unite: e.target.value }))}
+                    >
+                      <option value="jour">jour</option>
+                      <option value="mois">mois</option>
+                      <option value="annee">année</option>
+                    </select>
+                  </StatField>
+
+                  <button
+                    type="button"
+                    className="btn btn-primary rounded-xl"
+                    onClick={() => setPeriodicSubmitted(true)}
+                    disabled={!periodicForm.id_ressource}
+                  >
+                    Afficher
+                  </button>
+                </div>
+              </SectionCard>
+
+              <SectionCard>
+                <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+                  <h3 className="m-0 text-base font-semibold text-ink">Évolution</h3>
+                  <LegendRow items={chartLegendItems} />
+                </div>
+                <div className="w-full h-[280px]">
+                  <ResponsiveContainer>
+                    <LineChart data={periodicChartData}>
+                      <CartesianGrid vertical={false} stroke="rgba(0,0,0,0.05)" strokeDasharray="0" />
+                      <XAxis
+                        dataKey="periode"
+                        tick={{ fontSize: 10, fill: 'rgba(0,0,0,0.3)', fontFamily: 'DM Sans' }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        tick={{ fontSize: 10, fill: 'rgba(0,0,0,0.3)', fontFamily: 'JetBrains Mono' }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: '#fff',
+                          border: '1px solid rgba(0,0,0,0.08)',
+                          borderRadius: '10px',
+                          fontSize: '12px',
+                          fontFamily: 'DM Sans',
+                          boxShadow: 'none',
+                        }}
+                        cursor={{ fill: 'rgba(0,0,0,0.03)' }}
+                      />
+                      <Line type="monotone" dataKey="entrees" stroke="#1D9E75" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="sorties" stroke="#9FE1CB" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </SectionCard>
+
+              <SectionCard>
+                <h3 className="m-0 mb-4 text-base font-semibold text-ink">Résumé</h3>
+                <TableShell
+                  columns={['Période', 'Entrées', 'Sorties']}
+                  rows={periodicChartData}
+                  total={periodicChartData.length}
+                  alertCount={0}
+                  okCount={periodicChartData.length}
+                  renderRow={(row) => (
+                    <tr key={row.periode}>
+                      <td>{row.periode}</td>
+                      <td>{formatNumber(row.entrees)}</td>
+                      <td>{formatNumber(row.sorties)}</td>
+                    </tr>
+                  )}
+                />
+              </SectionCard>
             </div>
-          )}
+          ) : null}
         </div>
       ) : null}
 
       {mainTab === 'bilan' ? (
-        <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 }}>
-            <label style={{ ...labelStyle, width: 220 }}>
-              Année
-              <input
-                type="number"
-                style={inputStyle}
+        <div className="grid gap-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            {bilanKpis.map((card) => (
+              <MetricCard key={card.label} {...card} />
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <StatField label="Année" className="w-[180px]">
+              <select
                 value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value || currentYear))}
-              />
-            </label>
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="border-none bg-transparent text-sm text-ink outline-none font-['DM_Sans']"
+              >
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </StatField>
 
-            <button style={primaryButton} onClick={() => window.print()}>
-              Exporter PDF
-            </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
-            <div style={summaryCardStyle}>
-              <div style={summaryLabelStyle}>Total acquisitions</div>
-              <div style={summaryValueStyle}>{formatNumber(bilanSummary.totalAcquisitions)}</div>
-            </div>
-            <div style={summaryCardStyle}>
-              <div style={summaryLabelStyle}>Total sorties</div>
-              <div style={summaryValueStyle}>{formatNumber(bilanSummary.totalSorties)}</div>
-            </div>
-            <div style={summaryCardStyle}>
-              <div style={summaryLabelStyle}>Total donations</div>
-              <div style={summaryValueStyle}>{formatNumber(bilanSummary.totalDonations)}</div>
-            </div>
+          <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
+            <SectionCard>
+              <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+                <h3 className="m-0 text-base font-semibold text-ink">Acquisitions par mois</h3>
+                <LegendRow items={chartLegendItems} />
+              </div>
+              <div className="w-full h-[280px]">
+                <ResponsiveContainer>
+                  <BarChart
+                    data={bilanMonthlyData}
+                    barCategoryGap="35%"
+                    barGap={3}
+                    margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
+                  >
+                    <CartesianGrid vertical={false} stroke="rgba(0,0,0,0.05)" strokeDasharray="0" />
+                    <XAxis
+                      dataKey="mois"
+                      tick={{ fontSize: 10, fill: 'rgba(0,0,0,0.3)', fontFamily: 'DM Sans' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 10, fill: 'rgba(0,0,0,0.3)', fontFamily: 'JetBrains Mono' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: '#fff',
+                        border: '1px solid rgba(0,0,0,0.08)',
+                        borderRadius: '10px',
+                        fontSize: '12px',
+                        fontFamily: 'DM Sans',
+                        boxShadow: 'none',
+                      }}
+                      cursor={{ fill: 'rgba(0,0,0,0.03)' }}
+                    />
+                    <Bar dataKey="total" fill="#1D9E75" radius={[4, 4, 0, 0]} barSize={10} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </SectionCard>
+
+            <SectionCard>
+              <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+                <h3 className="m-0 text-base font-semibold text-ink">Consommation par entité</h3>
+                <LegendRow
+                  items={entitePieData.map((item, index) => ({ color: PIE_COLORS[index % PIE_COLORS.length], label: item.name }))}
+                />
+              </div>
+              <div className="w-full h-[280px]">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie data={entitePieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}>
+                      {entitePieData.map((entry, index) => (
+                        <Cell key={entry.name} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        background: '#fff',
+                        border: '1px solid rgba(0,0,0,0.08)',
+                        borderRadius: '10px',
+                        fontSize: '12px',
+                        fontFamily: 'DM Sans',
+                        boxShadow: 'none',
+                      }}
+                      cursor={{ fill: 'rgba(0,0,0,0.03)' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </SectionCard>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 12 }}>
-            {sectionCard(
-              <>
-                <h3 style={sectionTitleStyle}>Acquisitions par mois</h3>
-                <div style={{ width: '100%', height: 280 }}>
-                  <ResponsiveContainer>
-                    <BarChart data={bilanMonthlyData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="mois" />
-                      <YAxis allowDecimals={false} />
-                      <Tooltip />
-                      <Bar dataKey="total" fill="#2563eb" name="Acquisitions" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </>
-            )}
-
-            {sectionCard(
-              <>
-                <h3 style={sectionTitleStyle}>Consommation par entité</h3>
-                <div style={{ width: '100%', height: 280 }}>
-                  <ResponsiveContainer>
-                    <PieChart>
-                      <Pie data={entitePieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}>
-                        {entitePieData.map((entry, index) => (
-                          <Cell key={entry.name} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </>
-            )}
-          </div>
-
-          {sectionCard(
-            <>
-              <h3 style={sectionTitleStyle}>Marchés</h3>
-              <table style={tableStyle}>
-                <thead>
-                  <tr style={headRowStyle}>
-                    <th style={thStyle}>Réceptionnés</th>
-                    <th style={thStyle}>Non conformes</th>
-                    <th style={thStyle}>En attente</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr style={bodyRowStyle}>
-                    <td style={tdStyle}>{formatNumber(bilanData?.marches?.receptionnes)}</td>
-                    <td style={tdStyle}>{formatNumber(bilanData?.marches?.non_conformes)}</td>
-                    <td style={tdStyle}>{formatNumber(bilanData?.marches?.en_attente)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </>
-          )}
+          <SectionCard>
+            <h3 className="m-0 mb-4 text-base font-semibold text-ink">Marchés</h3>
+            <TableShell
+              columns={['Réceptionnés', 'Non conformes', 'En attente']}
+              rows={bilanData?.marches ? [bilanData.marches] : []}
+              total={bilanData?.marches ? 1 : 0}
+              alertCount={Number(bilanData?.marches?.non_conformes || 0)}
+              okCount={Number(bilanData?.marches?.receptionnes || 0)}
+              renderRow={(row) => (
+                <tr key="marches-summary">
+                  <td>{formatNumber(row.receptionnes)}</td>
+                  <td>{formatNumber(row.non_conformes)}</td>
+                  <td>{formatNumber(row.en_attente)}</td>
+                </tr>
+              )}
+            />
+          </SectionCard>
         </div>
       ) : null}
 
       {mainTab === 'achats' ? (
-        <div style={{ display: 'grid', gap: 12 }}>
-          {sectionCard(
-            <>
-              <h3 style={sectionTitleStyle}>Filtres</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
-                <label style={labelStyle}>
-                  Date début
-                  <input
-                    type="date"
-                    style={inputStyle}
-                    value={achatsFilters.date_debut}
-                    onChange={(e) => setAchatsFilters((prev) => ({ ...prev, date_debut: e.target.value }))}
+        <div className="grid gap-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            {achatsKpis.map((card) => (
+              <MetricCard key={card.label} {...card} />
+            ))}
+          </div>
+
+          <div className="mb-6 flex items-center gap-2 flex-wrap">
+            <StatField label="Début" className="min-w-[160px]">
+              <input
+                type="date"
+                value={achatsFilters.date_debut}
+                onChange={(e) => setAchatsFilters((prev) => ({ ...prev, date_debut: e.target.value }))}
+                className="border-none bg-transparent text-sm text-ink outline-none font-['DM_Sans']"
+              />
+            </StatField>
+            <StatField label="Fin" className="min-w-[160px]">
+              <input
+                type="date"
+                value={achatsFilters.date_fin}
+                onChange={(e) => setAchatsFilters((prev) => ({ ...prev, date_fin: e.target.value }))}
+                className="border-none bg-transparent text-sm text-ink outline-none font-['DM_Sans']"
+              />
+            </StatField>
+            <StatField label="Type" className="min-w-[180px]">
+              <select
+                value={achatsFilters.type_acquisition}
+                onChange={(e) => setAchatsFilters((prev) => ({ ...prev, type_acquisition: e.target.value }))}
+                className="border-none bg-transparent text-sm text-ink outline-none font-['DM_Sans']"
+              >
+                <option value="">Tous</option>
+                <option value="marche">Marché</option>
+                <option value="bon_commande">Bon commande</option>
+                <option value="donation">Don</option>
+              </select>
+            </StatField>
+            <StatField label="Entité" className="min-w-[180px]">
+              <select
+                value={achatsFilters.entite}
+                onChange={(e) => setAchatsFilters((prev) => ({ ...prev, entite: e.target.value }))}
+                className="border-none bg-transparent text-sm text-ink outline-none font-['DM_Sans']"
+              >
+                <option value="">Toutes</option>
+                <option value="chu">Médecine</option>
+                <option value="pharmacie">Pharmacie</option>
+                <option value="dentaire">Dentaire</option>
+                <option value="administratif">Admin</option>
+                <option value="labo">Labos</option>
+              </select>
+            </StatField>
+          </div>
+
+          <SectionCard>
+            <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+              <h3 className="m-0 text-base font-semibold text-ink">Achats par mois</h3>
+              <LegendRow items={[{ color: '#1D9E75', label: 'Achats' }]} />
+            </div>
+            <div className="w-full h-[280px]">
+              <ResponsiveContainer>
+                <BarChart
+                  data={achatsBarData}
+                  barCategoryGap="35%"
+                  barGap={3}
+                  margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
+                >
+                  <CartesianGrid vertical={false} stroke="rgba(0,0,0,0.05)" strokeDasharray="0" />
+                  <XAxis
+                    dataKey="mois"
+                    tick={{ fontSize: 10, fill: 'rgba(0,0,0,0.3)', fontFamily: 'DM Sans' }}
+                    axisLine={false}
+                    tickLine={false}
                   />
-                </label>
-
-                <label style={labelStyle}>
-                  Date fin
-                  <input
-                    type="date"
-                    style={inputStyle}
-                    value={achatsFilters.date_fin}
-                    onChange={(e) => setAchatsFilters((prev) => ({ ...prev, date_fin: e.target.value }))}
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 10, fill: 'rgba(0,0,0,0.3)', fontFamily: 'JetBrains Mono' }}
+                    axisLine={false}
+                    tickLine={false}
                   />
-                </label>
+                  <Tooltip
+                    contentStyle={{
+                      background: '#fff',
+                      border: '1px solid rgba(0,0,0,0.08)',
+                      borderRadius: '10px',
+                      fontSize: '12px',
+                      fontFamily: 'DM Sans',
+                      boxShadow: 'none',
+                    }}
+                    cursor={{ fill: 'rgba(0,0,0,0.03)' }}
+                  />
+                  <Bar dataKey="total" fill="#1D9E75" radius={[4, 4, 0, 0]} barSize={10} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </SectionCard>
 
-                <label style={labelStyle}>
-                  Type acquisition
-                  <select
-                    style={inputStyle}
-                    value={achatsFilters.type_acquisition}
-                    onChange={(e) => setAchatsFilters((prev) => ({ ...prev, type_acquisition: e.target.value }))}
-                  >
-                    <option value="">Tous</option>
-                    <option value="marche">Marché</option>
-                    <option value="bon_commande">BC</option>
-                    <option value="donation">Donation</option>
-                  </select>
-                </label>
+          <div className="grid gap-5 xl:grid-cols-2">
+            <SectionCard>
+              <h3 className="m-0 mb-4 text-base font-semibold text-ink">Top 10 articles les plus commandés</h3>
+              <TableShell
+                columns={['Article', 'Volume']}
+                rows={topData.topArticles}
+                total={topData.topArticles.length}
+                alertCount={0}
+                okCount={topData.topArticles.length}
+                renderRow={(row) => (
+                  <tr key={row.designation}>
+                    <td>{row.designation}</td>
+                    <td>{formatNumber(row.volume)}</td>
+                  </tr>
+                )}
+              />
+            </SectionCard>
 
-                <label style={labelStyle}>
-                  Entité
-                  <select
-                    style={inputStyle}
-                    value={achatsFilters.entite}
-                    onChange={(e) => setAchatsFilters((prev) => ({ ...prev, entite: e.target.value }))}
-                  >
-                    <option value="">Toutes</option>
-                    <option value="chu">Médecine</option>
-                    <option value="pharmacie">Pharmacie</option>
-                    <option value="dentaire">Dentaire</option>
-                    <option value="administratif">Admin</option>
-                    <option value="labo">Labos</option>
-                  </select>
-                </label>
-              </div>
-            </>
-          )}
-
-          {sectionCard(
-            <>
-              <h3 style={sectionTitleStyle}>Achats par mois</h3>
-              <div style={{ width: '100%', height: 280 }}>
-                <ResponsiveContainer>
-                  <BarChart data={achatsBarData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="mois" />
-                    <YAxis allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="total" fill="#2563eb" name="Achats" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {sectionCard(
-              <>
-                <h3 style={sectionTitleStyle}>Top 10 articles les plus commandés</h3>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr style={headRowStyle}>
-                      <th style={thStyle}>Article</th>
-                      <th style={thStyle}>Volume</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topData.topArticles.map((row) => (
-                      <tr key={row.designation} style={bodyRowStyle}>
-                        <td style={tdStyle}>{row.designation}</td>
-                        <td style={tdStyle}>{formatNumber(row.volume)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
-            )}
-
-            {sectionCard(
-              <>
-                <h3 style={sectionTitleStyle}>Top 5 fournisseurs par volume</h3>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr style={headRowStyle}>
-                      <th style={thStyle}>Fournisseur</th>
-                      <th style={thStyle}>Volume</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topData.topFournisseurs.map((row) => (
-                      <tr key={row.fournisseur} style={bodyRowStyle}>
-                        <td style={tdStyle}>{row.fournisseur}</td>
-                        <td style={tdStyle}>{formatNumber(row.volume)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
-            )}
+            <SectionCard>
+              <h3 className="m-0 mb-4 text-base font-semibold text-ink">Top 5 fournisseurs par volume</h3>
+              <TableShell
+                columns={['Fournisseur', 'Volume']}
+                rows={topData.topFournisseurs}
+                total={topData.topFournisseurs.length}
+                alertCount={0}
+                okCount={topData.topFournisseurs.length}
+                renderRow={(row) => (
+                  <tr key={row.fournisseur}>
+                    <td>{row.fournisseur}</td>
+                    <td>{formatNumber(row.volume)}</td>
+                  </tr>
+                )}
+              />
+            </SectionCard>
           </div>
         </div>
       ) : null}
     </div>
   );
 }
-
-const tabStyle = {
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#fff',
-  color: '#111827',
-  cursor: 'pointer',
-};
-
-const activeTabStyle = {
-  ...tabStyle,
-  background: '#111827',
-  color: '#fff',
-  border: '1px solid #111827',
-};
-
-const primaryButton = {
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#111827',
-  color: '#fff',
-  cursor: 'pointer',
-};
-
-const inputStyle = {
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '8px 10px',
-  fontSize: 14,
-};
-
-const labelStyle = {
-  display: 'grid',
-  gap: 6,
-  fontSize: 13,
-  color: '#374151',
-};
-
-const sectionTitleStyle = { marginTop: 0, marginBottom: 10 };
-
-const tableStyle = {
-  width: '100%',
-  borderCollapse: 'collapse',
-  fontSize: 14,
-};
-
-const headRowStyle = {
-  background: '#f9fafb',
-  textAlign: 'left',
-};
-
-const bodyRowStyle = {
-  borderTop: '1px solid #f3f4f6',
-};
-
-const thStyle = { padding: 8, fontWeight: 600 };
-const tdStyle = { padding: 8 };
-
-const pillStyle = {
-  borderRadius: 999,
-  padding: '3px 9px',
-  fontSize: 12,
-  fontWeight: 600,
-};
-
-const summaryCardStyle = {
-  border: '1px solid #e5e7eb',
-  borderRadius: 10,
-  padding: 12,
-  background: '#fff',
-};
-
-const summaryLabelStyle = {
-  fontSize: 13,
-  color: '#6b7280',
-};
-
-const summaryValueStyle = {
-  marginTop: 4,
-  fontSize: 24,
-  fontWeight: 700,
-  color: '#111827',
-};

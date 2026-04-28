@@ -11,7 +11,7 @@ from apps.resources.models import InstanceRessource, MouvementStock, Stock
 
 @receiver(post_save, sender=SignatureDecharge)
 def on_signature_valide(sender, instance, created, **kwargs):
-    if instance.statut != "valide":
+    if instance.statut not in ("signe", "valide"):
         return
 
     decharge = instance.id_decharge
@@ -45,7 +45,7 @@ def on_signature_valide(sender, instance, created, **kwargs):
             )
 
     demande = decharge.id_demande
-    demande.statut = "complete_avec_decharge"
+    demande.statut = "totale"
     demande.save(update_fields=["statut"])
 
     if instance.id_chef_service_id:

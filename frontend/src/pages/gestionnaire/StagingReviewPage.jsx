@@ -73,7 +73,7 @@ export default function StagingReviewPage() {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: rejectItem,
+    mutationFn: ({ id, data }) => rejectItem(id, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['procurement', 'staging', import_id] }),
   });
 
@@ -88,17 +88,10 @@ export default function StagingReviewPage() {
     const total = items.length;
     const pending = items.filter((item) => item.statut === 'en_attente').length;
     const approved = items.filter((item) => item.statut === 'approuve').length;
-    const avgConfidence =
-      total > 0
-        ? items.reduce((acc, item) => acc + Number(item.confiance_ia || 0), 0) / total
-        : 0;
-    const lowConfidence = items.filter((item) => Number(item.confiance_ia || 0) < 0.7);
     return {
       total,
       pending,
       approved,
-      avgConfidence,
-      lowConfidence,
     };
   }, [items]);
 
@@ -147,9 +140,7 @@ export default function StagingReviewPage() {
     updateDraft(itemId, { id_ressource_liee: normalizedId });
   }
 
-  const canBulkApprove =
-    stats.lowConfidence.length === 0 &&
-    items.every((item) => item.statut === 'approuve' || Boolean(item.id_ressource_liee));
+  const canBulkApprove = items.every((item) => item.statut === 'approuve' || Boolean(item.id_ressource_liee));
 
   if (stagingQuery.isLoading || importQuery.isLoading) {
     return <div style={{ height: 220, borderRadius: 10, background: '#f3f4f6' }} />;
@@ -169,11 +160,10 @@ export default function StagingReviewPage() {
       </div>
 
       <section style={sectionStyle}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10 }}>
           <Metric label="Marché" value={`#${importData?.id_marche || '—'}`} />
           <Metric label="Total items" value={stats.total} />
           <Metric label="Pending" value={stats.pending} />
-          <Metric label="Confiance avg" value={stats.avgConfidence.toFixed(2)} />
         </div>
         <div style={{ marginTop: 12 }}>
           <ProgressBar current={stats.approved} total={stats.total} />
@@ -202,13 +192,11 @@ export default function StagingReviewPage() {
                 <th style={thStyle}>Qté</th>
                 <th style={thStyle}>Catégorie suggérée</th>
                 <th style={thStyle}>Ressource</th>
-                <th style={thStyle}>Confiance IA</th>
                 <th style={thStyle}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item) => {
-                const isLow = Number(item.confiance_ia || 0) < 0.7;
                 const hasLinkedResource = Boolean(item.id_ressource_liee);
 
                 return (
@@ -216,7 +204,7 @@ export default function StagingReviewPage() {
                     key={item.id_staging}
                     style={{
                       borderTop: '1px solid #f3f4f6',
-                      background: isLow ? '#fffbeb' : '#fff',
+                      background: '#fff',
                     }}
                   >
                     <td style={tdStyle}>{item.designation_brute}</td>
@@ -238,7 +226,6 @@ export default function StagingReviewPage() {
                         </span>
                       )}
                     </td>
-                    <td style={tdStyle}>{Number(item.confiance_ia || 0).toFixed(2)}</td>
                     <td style={tdStyle}>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button
@@ -249,7 +236,16 @@ export default function StagingReviewPage() {
                         >
                           Approuver
                         </button>
-                        <button style={rejectButton} onClick={() => rejectMutation.mutate(item.id_staging)}>
+                        <button
+                          style={rejectButton}
+                          onClick={() => rejectMutation.mutate({
+                            id: item.id_staging,
+                            data: {
+                              motif_rejet: 'autre',
+                              commentaire_rejet: 'Rejet depuis la révision staging IA.',
+                            },
+                          })}
+                        >
                           Rejeter
                         </button>
                         <button style={secondaryButton} onClick={() => startEdit(item)}>

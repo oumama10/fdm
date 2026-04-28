@@ -14,17 +14,19 @@ const MouvementsPage = React.lazy(() => import('./pages/gestionnaire/MouvementsP
 const MarchesListPage = React.lazy(() => import('./pages/shared/MarchesListPage'));
 const MarcheDetailPage = React.lazy(() => import('./pages/shared/MarcheDetailPage'));
 const MarcheManualCreatePage = React.lazy(() => import('./pages/shared/MarcheManualCreatePage'));
-const StagingReviewPage = React.lazy(() => import('./pages/gestionnaire/StagingReviewPage'));
+const DonneesExtraitesPage = React.lazy(() => import('./pages/gestionnaire/DonneesExtraitesPage'));
 const DemandesListPage = React.lazy(() => import('./pages/gestionnaire/DemandesListPage'));
 const DemandeDetailPage = React.lazy(() => import('./pages/gestionnaire/DemandeDetailPage'));
 const DechargeCreatePage = React.lazy(() => import('./pages/gestionnaire/DechargeCreatePage'));
 const DechargeDetailPage = React.lazy(() => import('./pages/gestionnaire/DechargeDetailPage'));
 const DechargesListPage = React.lazy(() => import('./pages/gestionnaire/DechargesListPage'));
 const ReportingPage = React.lazy(() => import('./pages/gestionnaire/ReportingPage'));
+const AdminCategoriesPage = React.lazy(() => import('./pages/gestionnaire/AdminCategoriesPage'));
 const GestionnaireRetoursPage = React.lazy(() => import('./pages/gestionnaire/RetoursPage'));
 const GestionnaireAlertesPage = React.lazy(() => import('./pages/gestionnaire/AlertesPage'));
 const ChefDechargesPage = React.lazy(() => import('./pages/chef/DechargesPage'));
 const DechargeSignPage = React.lazy(() => import('./pages/chef/DechargeSignPage'));
+const ChefDechargeDetailPage = React.lazy(() => import('./pages/chef/ChefDechargeDetailPage'));
 const ChefDemandesPage = React.lazy(() => import('./pages/chef/DemandesPage'));
 const DemandeStatusPage = React.lazy(() => import('./pages/chef/DemandeStatusPage'));
 const ChefRetoursPage = React.lazy(() => import('./pages/chef/RetoursPage'));
@@ -86,7 +88,23 @@ export default function App() {
             path="/gestionnaire/marches"
             element={
               <ProtectedRoute requiredRole="gestionnaire_magasin">
-                <MarchesListPage />
+                <MarchesListPage fixedType="marche" pageTitle="Marchés" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/gestionnaire/bon-commandes"
+            element={
+              <ProtectedRoute requiredRole="gestionnaire_magasin">
+                <MarchesListPage fixedType="bon_commande" pageTitle="Bon de commandes" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/gestionnaire/dons"
+            element={
+              <ProtectedRoute requiredRole="gestionnaire_magasin">
+                <MarchesListPage fixedType="donation" pageTitle="Dons" />
               </ProtectedRoute>
             }
           />
@@ -107,10 +125,18 @@ export default function App() {
             }
           />
           <Route
+            path="/gestionnaire/import"
+            element={
+              <ProtectedRoute requiredRole="gestionnaire_magasin">
+                <FinanciereImportExcelPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/gestionnaire/staging/:import_id/"
             element={
               <ProtectedRoute requiredRole="gestionnaire_magasin">
-                <StagingReviewPage />
+                <Navigate to="/gestionnaire/donnees-extraites" replace />
               </ProtectedRoute>
             }
           />
@@ -118,7 +144,7 @@ export default function App() {
             path="/gestionnaire/staging/:import_id"
             element={
               <ProtectedRoute requiredRole="gestionnaire_magasin">
-                <StagingReviewPage />
+                <Navigate to="/gestionnaire/donnees-extraites" replace />
               </ProtectedRoute>
             }
           />
@@ -126,7 +152,15 @@ export default function App() {
             path="/gestionnaire/staging"
             element={
               <ProtectedRoute requiredRole="gestionnaire_magasin">
-                <Navigate to="/gestionnaire/marches" replace />
+                <Navigate to="/gestionnaire/donnees-extraites" replace />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/gestionnaire/donnees-extraites"
+            element={
+              <ProtectedRoute requiredRole="gestionnaire_magasin">
+                <DonneesExtraitesPage />
               </ProtectedRoute>
             }
           />
@@ -195,6 +229,14 @@ export default function App() {
             }
           />
           <Route
+            path="/gestionnaire/categories"
+            element={
+              <ProtectedRoute requiredRole="gestionnaire_magasin">
+                <AdminCategoriesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/chef/decharges"
             element={
               <ProtectedRoute requiredRole="chef_service">
@@ -219,6 +261,14 @@ export default function App() {
             }
           />
           <Route
+            path="/chef/decharges/:id"
+            element={
+              <ProtectedRoute requiredRole="chef_service">
+                <ChefDechargeDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/chef/decharges/:id/signer"
             element={
               <ProtectedRoute requiredRole="chef_service">
@@ -238,7 +288,23 @@ export default function App() {
             path="/financiere/marches"
             element={
               <ProtectedRoute requiredRole="service_financiere">
-                <MarchesListPage />
+                <MarchesListPage fixedType="marche" pageTitle="Marchés" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/financiere/bon-commandes"
+            element={
+              <ProtectedRoute requiredRole="service_financiere">
+                <MarchesListPage fixedType="bon_commande" pageTitle="Bon de commandes" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/financiere/dons"
+            element={
+              <ProtectedRoute requiredRole="service_financiere">
+                <MarchesListPage fixedType="donation" pageTitle="Dons" />
               </ProtectedRoute>
             }
           />

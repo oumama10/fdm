@@ -46,25 +46,25 @@ function ServiceFormModal({ mode, initialData, onClose, onSubmit, isSubmitting }
   }
 
   return (
-    <div style={backdropStyle} onClick={onClose}>
-      <div style={modalStyle} onClick={(event) => event.stopPropagation()}>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <h3 style={{ marginTop: 0 }}>{mode === 'create' ? 'Nouveau service' : 'Modifier service'}</h3>
 
         <div style={{ display: 'grid', gap: 10 }}>
-          <label style={labelStyle}>
+          <label className="field-label" style={{ display: 'grid', gap: 6 }}>
             Nom service
             <input
-              style={inputStyle}
+              className="field-input"
               value={form.nom_service}
               onChange={(e) => setField('nom_service', e.target.value)}
             />
             {errors.nom_service ? <span style={errorTextStyle}>{errors.nom_service}</span> : null}
           </label>
 
-          <label style={labelStyle}>
+          <label className="field-label" style={{ display: 'grid', gap: 6 }}>
             Type service
             <select
-              style={inputStyle}
+              className="field-input"
               value={form.type_service}
               onChange={(e) => setField('type_service', e.target.value)}
             >
@@ -75,17 +75,18 @@ function ServiceFormModal({ mode, initialData, onClose, onSubmit, isSubmitting }
             {errors.type_service ? <span style={errorTextStyle}>{errors.type_service}</span> : null}
           </label>
 
-          <label style={labelStyle}>
+          <label className="field-label" style={{ display: 'grid', gap: 6 }}>
             Description
             <textarea
               rows={3}
-              style={{ ...inputStyle, resize: 'vertical' }}
+              className="field-input"
+              style={{ resize: 'vertical' }}
               value={form.description}
               onChange={(e) => setField('description', e.target.value)}
             />
           </label>
 
-          <label style={labelStyle}>
+          <label className="field-label" style={{ display: 'grid', gap: 6 }}>
             Lettre nomination chef
             <input
               type="file"
@@ -95,8 +96,8 @@ function ServiceFormModal({ mode, initialData, onClose, onSubmit, isSubmitting }
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-          <button style={secondaryButton} onClick={onClose}>Annuler</button>
-          <button style={primaryButton} onClick={handleSave} disabled={isSubmitting}>
+          <button className="btn btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={isSubmitting}>
             {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
           </button>
         </div>
@@ -189,50 +190,50 @@ export default function ServicesPage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
+    <div className="page-stack">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0 }}>Services</h1>
-        <button style={primaryButton} onClick={openCreate}>Nouveau service</button>
+        <h1 className="page-title">Services</h1>
+        <button className="btn btn-primary" onClick={openCreate}>Nouveau service</button>
       </div>
 
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+      <div className="data-table-wrap">
         {servicesQuery.isLoading ? (
           <div style={{ padding: 14 }}>
             <div style={{ height: 160, borderRadius: 8, background: '#f3f4f6' }} />
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <table className="data-table" style={{ fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                <th style={thStyle}>Nom service</th>
-                <th style={thStyle}>Type</th>
-                <th style={thStyle}>Description</th>
-                <th style={thStyle}>Lettre nomination chef</th>
-                <th style={thStyle}>Actions</th>
+              <tr>
+                <th>Nom service</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Lettre nomination chef</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: 16, color: '#6b7280' }}>Aucun service.</td>
+                  <td colSpan={5} className="empty-state">Aucun service.</td>
                 </tr>
               ) : (
                 rows.map((service) => (
-                  <tr key={service.id_service} style={{ borderTop: '1px solid #f3f4f6' }}>
-                    <td style={tdStyle}>{service.nom_service}</td>
-                    <td style={tdStyle}>{service.type_service}</td>
-                    <td style={tdStyle}>{service.description || '—'}</td>
-                    <td style={tdStyle}>
+                  <tr key={service.id_service}>
+                    <td>{service.nom_service}</td>
+                    <td>{service.type_service}</td>
+                    <td>{service.description || '—'}</td>
+                    <td>
                       {service.lettre_nomination_chef ? (
                         <a href={service.lettre_nomination_chef} target="_blank" rel="noreferrer">Voir fichier</a>
                       ) : (
                         '—'
                       )}
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button style={secondaryButton} onClick={() => openEdit(service)}>Edit</button>
-                        <button style={secondaryButton} onClick={() => handleDelete(service)}>Supprimer</button>
+                        <button className="btn btn-secondary" onClick={() => openEdit(service)}>Edit</button>
+                        <button className="btn btn-secondary" onClick={() => handleDelete(service)}>Supprimer</button>
                       </div>
                     </td>
                   </tr>
@@ -258,57 +259,7 @@ export default function ServicesPage() {
   );
 }
 
-const backdropStyle = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(17,24,39,0.45)',
-  display: 'grid',
-  placeItems: 'center',
-  zIndex: 90,
-};
-
-const modalStyle = {
-  width: 'min(620px, 94vw)',
-  background: '#fff',
-  borderRadius: 12,
-  padding: 18,
-};
-
-const labelStyle = {
-  display: 'grid',
-  gap: 6,
-  fontSize: 13,
-  color: '#374151',
-};
-
-const inputStyle = {
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '8px 10px',
-  fontSize: 14,
-};
-
 const errorTextStyle = {
   color: '#b91c1c',
   fontSize: 12,
 };
-
-const primaryButton = {
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#111827',
-  color: '#fff',
-  cursor: 'pointer',
-};
-
-const secondaryButton = {
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '6px 10px',
-  background: '#fff',
-  cursor: 'pointer',
-};
-
-const thStyle = { padding: 10, fontWeight: 600 };
-const tdStyle = { padding: 10, verticalAlign: 'top' };

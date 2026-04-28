@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { acquitterAlerte, getAlertes } from '../../api/alerts';
 import { getStockAlertes } from '../../api/resources';
+import { MARCHE_STATUT_LABELS, StatusBadge } from '../../constants/statuts';
 
 function getDaysRemaining(row) {
   if (typeof row.jours_restants === 'number') return row.jours_restants;
@@ -44,31 +45,32 @@ export default function AlertesPage() {
   const stockRows = useMemo(() => stockQuery.data?.data || [], [stockQuery.data?.data]);
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <h1 style={{ margin: 0 }}>Alertes</h1>
+    <div className="page-stack">
+      <h1 className="page-title">Alertes</h1>
 
-      <section style={sectionStyle}>
-        <h3 style={{ margin: '0 0 10px 0' }}>Alertes délai marchés</h3>
+      <section className="section-shell">
+        <h3 className="section-title">Alertes délai marchés</h3>
         {alertesQuery.isLoading ? (
           <div style={{ height: 180, borderRadius: 10, background: '#f3f4f6' }} />
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <table className="data-table" style={{ fontSize: 13 }}>
               <thead>
-                <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                  <th style={thStyle}>Référence</th>
-                  <th style={thStyle}>Type</th>
-                  <th style={thStyle}>Fournisseur</th>
-                  <th style={thStyle}>Échéance</th>
-                  <th style={thStyle}>Jours restants</th>
-                  <th style={thStyle}>Niveau</th>
-                  <th style={thStyle}>Acquitté</th>
+                <tr>
+                  <th>Référence</th>
+                  <th>Type</th>
+                  <th>Statut marché</th>
+                  <th>Fournisseur</th>
+                  <th>Échéance</th>
+                  <th>Jours restants</th>
+                  <th>Niveau</th>
+                  <th>Acquitté</th>
                 </tr>
               </thead>
               <tbody>
                 {alertesRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: 16, color: '#6b7280' }}>
+                    <td colSpan={8} className="empty-state">
                       Aucune alerte délai.
                     </td>
                   </tr>
@@ -77,33 +79,34 @@ export default function AlertesPage() {
                     const jours = getDaysRemaining(row);
                     const rowStyle =
                       typeof jours === 'number' && jours <= 7
-                        ? { background: '#fee2e2' }
+                        ? { background: '#fff6e5' }
                         : typeof jours === 'number' && jours <= 14
-                        ? { background: '#fef3c7' }
+                        ? { background: '#fef9eb' }
                         : {};
                     const idAlerte = getAlerteId(row);
                     return (
-                      <tr key={idAlerte} style={{ borderTop: '1px solid #f3f4f6', ...rowStyle }}>
-                        <td style={tdStyle}>{row.marche?.reference || row.idMarche?.reference || '—'}</td>
-                        <td style={tdStyle}>{row.marche?.type_acquisition || row.marche?.typeAcquisition || '—'}</td>
-                        <td style={tdStyle}>
+                      <tr key={idAlerte} style={rowStyle}>
+                        <td>{row.marche?.reference || row.idMarche?.reference || '—'}</td>
+                        <td>{row.marche?.type_acquisition || row.marche?.typeAcquisition || '—'}</td>
+                        <td><StatusBadge map={MARCHE_STATUT_LABELS} value={row.marche?.statut || row.idMarche?.statut} /></td>
+                        <td>
                           {row.fournisseur || row.nomFournisseur || '—'}
                         </td>
-                        <td style={tdStyle}>
+                        <td>
                           {row.date_echeance
                             ? new Date(row.date_echeance).toLocaleDateString('fr-FR')
                             : row.dateEcheance
                             ? new Date(row.dateEcheance).toLocaleDateString('fr-FR')
                             : '—'}
                         </td>
-                        <td style={tdStyle}>{jours ?? '—'}</td>
-                        <td style={tdStyle}>{getNiveau(row)}</td>
-                        <td style={tdStyle}>
+                        <td>{jours ?? '—'}</td>
+                        <td>{getNiveau(row)}</td>
+                        <td>
                           {row.acquitte || row.acquitte === true ? (
-                            <span style={{ color: '#065f46' }}>Oui</span>
+                            <span style={{ color: '#0f6e56', fontWeight: 700 }}>Oui</span>
                           ) : (
                             <button
-                              style={primaryButton}
+                              className="btn btn-primary"
                               onClick={() => acquitterMutation.mutate(idAlerte)}
                               disabled={acquitterMutation.isPending}
                             >
@@ -121,26 +124,26 @@ export default function AlertesPage() {
         )}
       </section>
 
-      <section style={sectionStyle}>
-        <h3 style={{ margin: '0 0 10px 0' }}>Alertes stock bas</h3>
+      <section className="section-shell">
+        <h3 className="section-title">Alertes stock bas</h3>
         {stockQuery.isLoading ? (
           <div style={{ height: 180, borderRadius: 10, background: '#f3f4f6' }} />
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <table className="data-table" style={{ fontSize: 13 }}>
               <thead>
-                <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                  <th style={thStyle}>Désignation</th>
-                  <th style={thStyle}>Catégorie</th>
-                  <th style={thStyle}>Qté disponible</th>
-                  <th style={thStyle}>Seuil</th>
-                  <th style={thStyle}>Statut</th>
+                <tr>
+                  <th>Désignation</th>
+                  <th>Catégorie</th>
+                  <th>Qté disponible</th>
+                  <th>Seuil</th>
+                  <th>Statut</th>
                 </tr>
               </thead>
               <tbody>
                 {stockRows.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ padding: 16, color: '#6b7280' }}>
+                    <td colSpan={5} className="empty-state">
                       Aucun stock bas.
                     </td>
                   </tr>
@@ -148,13 +151,15 @@ export default function AlertesPage() {
                   stockRows.map((row) => {
                     const low = Number(row.quantite_disponible || 0) <= Number(row.seuil_alerte || 0);
                     return (
-                      <tr key={row.id_stock} style={{ borderTop: '1px solid #f3f4f6' }}>
-                        <td style={tdStyle}>{row.id_ressource?.designation || '—'}</td>
-                        <td style={tdStyle}>{row.id_ressource?.id_categorie?.nom_categorie || '—'}</td>
-                        <td style={tdStyle}>{row.quantite_disponible ?? '—'}</td>
-                        <td style={tdStyle}>{row.seuil_alerte ?? '—'}</td>
-                        <td style={tdStyle}>
-                          <span style={{ color: low ? '#b45309' : '#065f46' }}>{low ? 'Stock bas' : 'OK'}</span>
+                      <tr key={row.id_stock}>
+                        <td>{row.id_ressource?.designation || '—'}</td>
+                        <td>{row.id_ressource?.id_categorie?.nom_categorie || '—'}</td>
+                        <td>{row.quantite_disponible ?? '—'}</td>
+                        <td>{row.seuil_alerte ?? '—'}</td>
+                        <td>
+                          <span className="status-chip" style={{ background: low ? '#fef3dc' : '#e1f5ee', color: low ? '#9a6e1a' : '#0f6e56' }}>
+                            {low ? 'Stock bas' : 'OK'}
+                          </span>
                         </td>
                       </tr>
                     );
@@ -168,22 +173,3 @@ export default function AlertesPage() {
     </div>
   );
 }
-
-const sectionStyle = {
-  border: '1px solid #e5e7eb',
-  borderRadius: 12,
-  background: '#fff',
-  padding: 12,
-};
-
-const thStyle = { padding: 8, fontWeight: 600 };
-const tdStyle = { padding: 8 };
-
-const primaryButton = {
-  border: 'none',
-  borderRadius: 8,
-  padding: '6px 10px',
-  background: '#111827',
-  color: '#fff',
-  cursor: 'pointer',
-};

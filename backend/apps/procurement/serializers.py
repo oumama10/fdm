@@ -70,11 +70,19 @@ class MarcheBCSerializer(serializers.ModelSerializer):
             "id_marche",
             "reference",
             "type_acquisition",
+            "type_donateur",
+            "nom_donateur",
+            "organisme_donateur",
+            "contact_donateur",
+            "beneficiaire_commande",
+            "statut_signature_commande",
+            "date_signature_commande",
             "date_creation",
             "delai_reception_jours",
             "date_livraison_prevue",
             "statut",
             "fichier_cps",
+            "id_demande_source",
             "id_fournisseur",
             "fournisseur",
             "id_cree_par",
@@ -88,6 +96,20 @@ class MarcheBCSerializer(serializers.ModelSerializer):
             "date_livraison_prevue",
             "etapes",
         ]
+
+    def validate(self, attrs):
+        data = dict(attrs)
+        if self.instance is not None:
+            data.setdefault("type_acquisition", self.instance.type_acquisition)
+            data.setdefault("nom_donateur", self.instance.nom_donateur)
+
+        if data.get("type_acquisition") == "donation" and not str(
+            data.get("nom_donateur") or ""
+        ).strip():
+            raise serializers.ValidationError(
+                {"nom_donateur": "Le nom du donateur est obligatoire pour un don."}
+            )
+        return attrs
 
     def get_import_excel(self, obj):
         import_obj = getattr(obj, "import_excel", None)
@@ -202,9 +224,10 @@ class StagingItemSerializer(serializers.ModelSerializer):
             "description",
             "designation_normalisee",
             "quantite",
-            "confiance_ia",
             "statut",
             "correction_gestionnaire",
+            "motif_rejet",
+            "commentaire_rejet",
             "prix_unitaire_ht",
             "prix_total_ht",
             "unite",
@@ -216,7 +239,6 @@ class StagingItemSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id_staging",
             "designation_brute",
-            "confiance_ia",
             "id_import",
             "needs_review",
         ]
@@ -226,7 +248,11 @@ class StagingItemSerializer(serializers.ModelSerializer):
         # designation must already exist on the instance or be supplied now.
         incoming_statut = attrs.get("statut")
         if incoming_statut == "approuve":
-            if not self.instance or not self.instance.id_ressource_liee:
+            linked_resource = attrs.get("id_ressource_liee")
+            if not linked_resource and self.instance:
+                linked_resource = self.instance.id_ressource_liee
+
+            if not linked_resource:
                 raise serializers.ValidationError(
                     {
                         "id_ressource_liee": (

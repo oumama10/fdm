@@ -177,69 +177,71 @@ export default function UtilisateursPage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
+    <div className="page-stack">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0 }}>Utilisateurs</h1>
-        <button style={primaryButton} onClick={openCreate}>Nouvel utilisateur</button>
+        <h1 className="page-title">Utilisateurs</h1>
+        <button className="btn btn-primary" onClick={openCreate}>Nouvel utilisateur</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-        <select style={inputStyle} value={filterRole} onChange={(e) => setFilterRole(e.target.value)}>
+      <div className="section-shell">
+        <div className="grid-split" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+        <select className="field-input" value={filterRole} onChange={(e) => setFilterRole(e.target.value)}>
           <option value="">Tous rôles</option>
           {roles.map((role) => (
             <option key={role.id_role} value={role.id_role}>{role.nom_role}</option>
           ))}
         </select>
 
-        <select style={inputStyle} value={filterService} onChange={(e) => setFilterService(e.target.value)}>
+        <select className="field-input" value={filterService} onChange={(e) => setFilterService(e.target.value)}>
           <option value="">Tous services</option>
           {services.map((service) => (
             <option key={service.id_service} value={service.id_service}>{service.nom_service}</option>
           ))}
         </select>
 
-        <select style={inputStyle} value={filterActif} onChange={(e) => setFilterActif(e.target.value)}>
+        <select className="field-input" value={filterActif} onChange={(e) => setFilterActif(e.target.value)}>
           <option value="">Actif + inactif</option>
           <option value="true">Actif</option>
           <option value="false">Inactif</option>
         </select>
+        </div>
       </div>
 
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+      <div className="data-table-wrap">
         {utilisateursQuery.isLoading ? (
           <div style={{ padding: 14 }}>
             <div style={{ height: 180, borderRadius: 8, background: '#f3f4f6' }} />
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <table className="data-table" style={{ fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                <th style={thStyle}>Nom complet</th>
-                <th style={thStyle}>Email</th>
-                <th style={thStyle}>Rôle</th>
-                <th style={thStyle}>Service</th>
-                <th style={thStyle}>Actif</th>
-                <th style={thStyle}>Actions</th>
+              <tr>
+                <th>Nom complet</th>
+                <th>Email</th>
+                <th>Rôle</th>
+                <th>Service</th>
+                <th>Actif</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {tableRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: 16, color: '#6b7280' }}>Aucun utilisateur.</td>
+                  <td colSpan={6} className="empty-state">Aucun utilisateur.</td>
                 </tr>
               ) : (
                 tableRows.map((user) => (
-                  <tr key={user.id_utilisateur} style={{ borderTop: '1px solid #f3f4f6' }}>
-                    <td style={tdStyle}>{user.nom_complet}</td>
-                    <td style={tdStyle}>{user.email}</td>
-                    <td style={tdStyle}>{user.id_role?.nom_role || '—'}</td>
-                    <td style={tdStyle}>{user.id_service?.nom_service || '—'}</td>
-                    <td style={tdStyle}>{user.actif ? 'Oui' : 'Non'}</td>
-                    <td style={tdStyle}>
+                  <tr key={user.id_utilisateur}>
+                    <td>{user.nom_complet}</td>
+                    <td>{user.email}</td>
+                    <td>{user.id_role?.nom_role || '—'}</td>
+                    <td>{user.id_service?.nom_service || '—'}</td>
+                    <td>{user.actif ? 'Oui' : 'Non'}</td>
+                    <td style={{ verticalAlign: 'top' }}>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button style={secondaryButton} onClick={() => openEdit(user)}>Edit</button>
+                        <button className="btn btn-secondary" onClick={() => openEdit(user)}>Edit</button>
                         <button
-                          style={secondaryButton}
+                          className="btn btn-secondary"
                           onClick={() => toggleActif(user)}
                           disabled={updateMutation.isPending}
                         >
@@ -273,30 +275,3 @@ export default function UtilisateursPage() {
     </div>
   );
 }
-
-const inputStyle = {
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '8px 10px',
-  fontSize: 14,
-};
-
-const primaryButton = {
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#111827',
-  color: '#fff',
-  cursor: 'pointer',
-};
-
-const secondaryButton = {
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '6px 10px',
-  background: '#fff',
-  cursor: 'pointer',
-};
-
-const thStyle = { padding: 10, fontWeight: 600 };
-const tdStyle = { padding: 10, verticalAlign: 'top' };

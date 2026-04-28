@@ -69,23 +69,24 @@ export default function JournalAuditPage() {
   }, [rows]);
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <h1 style={{ margin: 0 }}>Journal d'audit</h1>
+    <div className="page-stack">
+      <h1 className="page-title">Journal d'audit</h1>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
-        <label style={labelStyle}>
+      <div className="section-shell">
+        <div className="grid-split" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
+        <label className="field-label" style={{ display: 'grid', gap: 6 }}>
           Date début
-          <input type="date" style={inputStyle} value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
+          <input type="date" name="filter-date-from" className="field-input" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
         </label>
 
-        <label style={labelStyle}>
+        <label className="field-label" style={{ display: 'grid', gap: 6 }}>
           Date fin
-          <input type="date" style={inputStyle} value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
+          <input type="date" name="filter-date-to" className="field-input" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
         </label>
 
-        <label style={labelStyle}>
+        <label className="field-label" style={{ display: 'grid', gap: 6 }}>
           Utilisateur
-          <select style={inputStyle} value={filterUtilisateur} onChange={(e) => setFilterUtilisateur(e.target.value)}>
+          <select className="field-input" value={filterUtilisateur} onChange={(e) => setFilterUtilisateur(e.target.value)}>
             <option value="">Tous</option>
             {users.map((user) => (
               <option key={user.id_utilisateur} value={user.id_utilisateur}>{user.nom_complet}</option>
@@ -93,37 +94,38 @@ export default function JournalAuditPage() {
           </select>
         </label>
 
-        <label style={labelStyle}>
+        <label className="field-label" style={{ display: 'grid', gap: 6 }}>
           Table cible
-          <select style={inputStyle} value={filterTable} onChange={(e) => setFilterTable(e.target.value)}>
+          <select className="field-input" value={filterTable} onChange={(e) => setFilterTable(e.target.value)}>
             <option value="">Toutes</option>
             {tableOptions.map((table) => (
               <option key={table} value={table}>{table}</option>
             ))}
           </select>
         </label>
+        </div>
       </div>
 
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+      <div className="data-table-wrap">
         {journalQuery.isLoading ? (
           <div style={{ padding: 14 }}>
             <div style={{ height: 180, borderRadius: 8, background: '#f3f4f6' }} />
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <table className="data-table" style={{ fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                <th style={thStyle}>Date action</th>
-                <th style={thStyle}>Utilisateur</th>
-                <th style={thStyle}>Action</th>
-                <th style={thStyle}>Table</th>
-                <th style={thStyle}>IP</th>
+              <tr>
+                <th>Date action</th>
+                <th>Utilisateur</th>
+                <th>Action</th>
+                <th>Table</th>
+                <th>IP</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: 16, color: '#6b7280' }}>Aucun log.</td>
+                  <td colSpan={5} className="empty-state">Aucun log.</td>
                 </tr>
               ) : (
                 rows.map((row) => {
@@ -132,17 +134,17 @@ export default function JournalAuditPage() {
                   return (
                     <Fragment key={row.id_log}>
                       <tr
-                        style={{ borderTop: '1px solid #f3f4f6', cursor: 'pointer' }}
+                        style={{ cursor: 'pointer' }}
                         onClick={() => setExpandedRowId(expanded ? null : row.id_log)}
                       >
-                        <td style={tdStyle}>{formatDate(row.date_action)}</td>
-                        <td style={tdStyle}>{row.id_utilisateur?.nom_complet || '—'}</td>
-                        <td style={tdStyle}>{row.type_action || '—'}</td>
-                        <td style={tdStyle}>{row.table_cible || '—'}</td>
-                        <td style={tdStyle}>{row.adresse_ip || '—'}</td>
+                        <td>{formatDate(row.date_action)}</td>
+                        <td>{row.id_utilisateur?.nom_complet || '—'}</td>
+                        <td>{row.type_action || '—'}</td>
+                        <td>{row.table_cible || '—'}</td>
+                        <td>{row.adresse_ip || '—'}</td>
                       </tr>
                       {expanded ? (
-                        <tr style={{ borderTop: '1px solid #f3f4f6' }}>
+                        <tr>
                           <td colSpan={5} style={{ padding: 12, background: '#fafafa' }}>
                             <JsonDiffBlock oldValue={row.ancienne_valeur} newValue={row.nouvelle_valeur} />
                           </td>
@@ -160,20 +162,6 @@ export default function JournalAuditPage() {
   );
 }
 
-const labelStyle = {
-  display: 'grid',
-  gap: 6,
-  fontSize: 13,
-  color: '#374151',
-};
-
-const inputStyle = {
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '8px 10px',
-  fontSize: 14,
-};
-
 const preStyle = {
   margin: 0,
   padding: 8,
@@ -184,6 +172,3 @@ const preStyle = {
   maxHeight: 220,
   overflow: 'auto',
 };
-
-const thStyle = { padding: 10, fontWeight: 600 };
-const tdStyle = { padding: 10, verticalAlign: 'top' };

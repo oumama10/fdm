@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.db.models import F
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -6,8 +8,28 @@ from apps.procurement.models import ImportExcelBC, LotArticle, StagingItem
 from apps.resources.models import InstanceRessource, MouvementStock, Stock
 
 
+def generate_numero_inventaire():
+    """
+    Format : INV-{YY}-{XXXX}
+    Exemple : INV-26-0001, INV-26-0042
+    YY   = 2 derniers chiffres de l'annee courante
+    XXXX = sequence sur 4 chiffres, reset chaque annee
+    """
+    current_year = date.today().year
+    yy = str(current_year)[-2:]
+
+    count = InstanceRessource.objects.filter(
+        numero_inventaire__startswith=f"INV-{yy}-"
+    ).count()
+    sequence = str(count + 1).zfill(4)
+    return f"INV-{yy}-{sequence}"
+
+
 @receiver(post_save, sender=StagingItem)
 def on_staging_approuve(sender, instance, **kwargs):
+    if getattr(instance, '_skip_stock_signal', False):
+        return
+
     if instance.statut != "approuve" or not instance.id_ressource_liee_id:
         return
 
@@ -41,17 +63,15 @@ def on_staging_approuve(sender, instance, **kwargs):
         )
     else:
         # Bien inventaire: one InstanceRessource per unit
-        existing_count = InstanceRessource.objects.filter(
-            id_ressource=ressource
-        ).count()
+        acquisition_date = marche.date_creation or marche.date_livraison_prevue
         instances = []
         for i in range(instance.quantite):
-            sequence = existing_count + i + 1
             instances.append(
                 InstanceRessource(
                     id_ressource=ressource,
                     id_lot=lot,
-                    numero_inventaire=f"INV-{ressource.pk}-{sequence:04d}",
+                    numero_inventaire=generate_numero_inventaire(),
+                    date_acquisition=acquisition_date,
                     statut="en_stock",
                     etat="neuf",
                 )
@@ -71,3 +91,6 @@ def on_staging_approuve(sender, instance, **kwargs):
         ImportExcelBC.objects.filter(pk=import_obj.pk).update(
             statut_import="valide"
         )
+        if import_obj.id_marche_id:
+            marche.statut = "receptionne_et_stocke"
+            marche.save(update_fields=["statut"])

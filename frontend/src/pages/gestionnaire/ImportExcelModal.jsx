@@ -36,7 +36,7 @@ export default function ImportExcelModal({ marcheId, onClose, onDone, showReview
     enabled: Boolean(importId),
     refetchInterval: (query) => {
       const status = query.state.data?.data?.statut_import;
-      return status === 'en_revision' ? 3000 : false;
+      return !status ? 3000 : false;
     },
     staleTime: 0,
   });
@@ -46,7 +46,7 @@ export default function ImportExcelModal({ marcheId, onClose, onDone, showReview
   useEffect(() => {
     if (!importData || !importId) return;
 
-    if (importData.statut_import === 'brouillon' && uploadState !== 'ready') {
+    if (importData.statut_import === 'en_attente' && uploadState !== 'ready') {
       setUploadState('ready');
       if (redirectTimerRef.current) {
         clearTimeout(redirectTimerRef.current);
@@ -69,7 +69,7 @@ export default function ImportExcelModal({ marcheId, onClose, onDone, showReview
     if (uploadMutation.isPending) return 'Upload en cours...';
     if (uploadState === 'extracting') return 'Extraction IA en cours...';
     if (uploadState === 'ready') return 'Extraction terminée — redirection en cours...';
-    if (importData?.statut_import === 'brouillon') {
+    if (importData?.statut_import === 'en_attente') {
       return `${importData.staging_items_count || 0} lignes extraites — Voir staging`;
     }
     return '';

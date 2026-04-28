@@ -1,0 +1,39 @@
+@startuml
+title Workflow 3 - Staging Validation and Stock Integration
+
+skinparam backgroundColor #ffffff
+skinparam shadowing false
+skinparam ArrowColor #1E40AF
+skinparam ActivityBorderColor #2563EB
+skinparam ActivityBackgroundColor #F8FAFC
+
+start
+:Gestionnaire opens staging review;
+:POST /classify-preview (optional);
+:POST /classify-and-validate;
+:Load STAGING_ITEM (not rejected);
+
+while (More rows?) is (yes)
+  :Pick one staging row;
+  :Resolve type/categorie/sous-categorie;
+  :Create or reuse RESSOURCE;
+  :Update STAGING_ITEM -> approuve;
+  :Create or reuse LOT_ARTICLE;
+
+  if (Ressource is consommable?) then (yes)
+    :Update STOCK.quantite_disponible;
+    :Insert MOUVEMENT_STOCK(entree);
+  else (no)
+    :Create INSTANCE_RESSOURCE per unit;
+    :Link instance to LOT_ARTICLE;
+    :Insert MOUVEMENT_STOCK(entree);
+  endif
+endwhile (no)
+
+if (Pending rows left?) then (yes)
+  :Keep import in review state;
+else (no)
+  :Set IMPORT_EXCEL_BC.statut_import=valide;
+endif
+stop
+@enduml

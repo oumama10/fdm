@@ -1,0 +1,31 @@
+@startuml
+title Workflow 1 - Excel Import to Staging
+
+skinparam backgroundColor #ffffff
+skinparam shadowing false
+skinparam ArrowColor #1E40AF
+skinparam ActivityBorderColor #2563EB
+skinparam ActivityBackgroundColor #F8FAFC
+
+start
+:Service financiere uploads .xlsx;
+:POST /api/procurement/import/direct/;
+:Create MARCHE_BC (placeholder);
+:Create IMPORT_EXCEL_BC (statut_import=en_revision);
+:Trigger extract_excel_items task;
+
+if (Celery broker available?) then (yes)
+  :Queue task in ocr queue;
+else (no)
+  :Fallback to synchronous extraction;
+endif
+
+:Read workbook with openpyxl;
+:Extract metadata + article rows;
+:Normalize designation (NLP);
+:Create STAGING_ITEM rows;
+:Enrich MARCHE_BC reference/supplier;
+:Set statut_import=brouillon;
+:Notify gestionnaire_magasin;
+stop
+@enduml

@@ -1,0 +1,26 @@
+@startuml
+title Workflow 6 - Alerts and Reporting
+
+skinparam backgroundColor #ffffff
+skinparam shadowing false
+skinparam ArrowColor #1E40AF
+skinparam ActivityBorderColor #2563EB
+skinparam ActivityBackgroundColor #F8FAFC
+
+start
+:Scheduled Celery beat triggers checks;
+:Scan MARCHE_BC deadlines;
+:Scan STOCK thresholds;
+
+if (Critical or warning condition?) then (yes)
+  :Create ALERT records;
+  :Create Notification rows;
+  :Send web/email notifications;
+else (no)
+  :No alert action;
+endif
+
+:Reporting APIs aggregate read-only data;
+:Frontend dashboards refresh summaries;
+stop
+@enduml

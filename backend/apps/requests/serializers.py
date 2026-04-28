@@ -9,15 +9,26 @@ from .models import Demande, LigneDemande
 
 
 class _RessourceBriefSerializer(serializers.Serializer):
-    """Read-only: {id_ressource, designation, categorie_nom, unite_mesure}."""
+    """Read-only: {id_ressource, designation, categorie_nom, sous_categorie_nom, sous_categorie_parent_nom, unite_mesure}."""
 
     id_ressource = serializers.IntegerField()
     designation = serializers.CharField()
     unite_mesure = serializers.CharField()
     categorie_nom = serializers.SerializerMethodField()
+    sous_categorie_nom = serializers.SerializerMethodField()
+    sous_categorie_parent_nom = serializers.SerializerMethodField()
 
     def get_categorie_nom(self, obj) -> str:
         return obj.id_categorie.nom_categorie if obj.id_categorie else ""
+
+    def get_sous_categorie_nom(self, obj) -> str:
+        return obj.id_sous_categorie.nom_sous_categorie if obj.id_sous_categorie else ""
+
+    def get_sous_categorie_parent_nom(self, obj) -> str:
+        sc = obj.id_sous_categorie
+        if sc and sc.id_parent_sous_categorie:
+            return sc.id_parent_sous_categorie.nom_sous_categorie
+        return ""
 
 
 class _UtilisateurBriefSerializer(serializers.Serializer):
@@ -32,6 +43,13 @@ class _ServiceBriefSerializer(serializers.Serializer):
 
     id_service = serializers.IntegerField()
     nom_service = serializers.CharField()
+
+
+class _CommandeInterneBriefSerializer(serializers.Serializer):
+    id_marche = serializers.IntegerField()
+    reference = serializers.CharField()
+    statut_signature_commande = serializers.CharField()
+    date_signature_commande = serializers.DateTimeField(allow_null=True)
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +87,7 @@ class DemandeSerializer(serializers.ModelSerializer):
         source="id_chef_demandeur", read_only=True
     )
     service = _ServiceBriefSerializer(source="id_service", read_only=True)
+    commande_interne = _CommandeInterneBriefSerializer(read_only=True)
 
     class Meta:
         model = Demande
@@ -77,6 +96,10 @@ class DemandeSerializer(serializers.ModelSerializer):
             "date_demande",
             "urgence",
             "statut",
+            "type_demandeur",
+            "beneficiaire_type",
+            "beneficiaire_nom",
+            "beneficiaire_detail",
             "justification",
             "date_validation",
             "commentaire_validation",
@@ -85,6 +108,7 @@ class DemandeSerializer(serializers.ModelSerializer):
             "id_service",
             "service",
             "id_valide_par",
+            "commande_interne",
             "lignes",
             "lien_suivi",
         ]
@@ -124,10 +148,66 @@ class DemandeCreateSerializer(serializers.ModelSerializer):
     """
 
     lignes = _LigneCreateSerializer(many=True, write_only=True)
+    lien_suivi = serializers.CharField(read_only=True)
 
     class Meta:
         model = Demande
-        fields = ["urgence", "justification", "id_service", "lignes"]
+        fields = [
+            "id_demande",
+            "urgence",
+            "type_demandeur",
+            "beneficiaire_type",
+            "beneficiaire_nom",
+            "beneficiaire_detail",
+            "justification",
+            "id_service",
+            "lignes",
+            "lien_suivi",
+        ]
+        read_only_fields = ["id_demande", "lien_suivi"]
+
+    def validate(self, attrs):
+        service = attrs.get("id_service")
+        type_demandeur = attrs.get("type_demandeur")
+        beneficiaire_type = str(attrs.get("beneficiaire_type") or "").strip()
+        beneficiaire_nom = str(attrs.get("beneficiaire_nom") or "").strip()
+        expected_demandeur = "Chef de service"
+
+        if service and type_demandeur:
+            expected_type = service.type_service
+            if expected_type == "administratif":
+                expected_type = "service"
+            if type_demandeur != expected_type:
+                raise serializers.ValidationError(
+                    {
+                        "type_demandeur": (
+                            "Le type de demandeur doit correspondre au type du service selectionne."
+                        )
+                    }
+                )
+
+        if not beneficiaire_type:
+            raise serializers.ValidationError(
+                {"beneficiaire_type": "Le type de beneficiaire est obligatoire."}
+            )
+        if not beneficiaire_nom:
+            raise serializers.ValidationError(
+                {"beneficiaire_nom": "Le beneficiaire est obligatoire."}
+            )
+
+        if beneficiaire_nom != expected_demandeur:
+            raise serializers.ValidationError(
+                {
+                    "beneficiaire_nom": (
+                        "Seul 'Chef de service' est autorise comme demandeur."
+                    )
+                }
+            )
+
+        attrs["beneficiaire_type"] = beneficiaire_type
+        attrs["beneficiaire_nom"] = expected_demandeur
+        attrs["beneficiaire_detail"] = str(attrs.get("beneficiaire_detail") or "").strip()
+        return attrs
 
     # ── availability helper ───────────────────────────────────────────────────
 

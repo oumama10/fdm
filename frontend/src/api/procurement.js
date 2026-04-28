@@ -14,14 +14,17 @@ export const uploadExcelDirect = (formData) =>
 export const createManualImport = (data) => apiClient.post('/procurement/import/manual/', data);
 export const getImports = () => apiClient.get('/procurement/import/');
 export const getImportById = (importId) => apiClient.get(`/procurement/import/${importId}/`);
+export const updateImportById = (importId, data) => apiClient.patch(`/procurement/import/${importId}/`, data);
 export const sendImportToGestionnaire = (importId) =>
 	apiClient.post(`/procurement/import/${importId}/envoyer-gestionnaire/`);
 export const getStagingItems = (importId) =>
 	apiClient.get('/procurement/staging/', { params: { id_import: importId } });
 export const updateStagingItem = (itemId, data) =>
 	apiClient.patch(`/procurement/staging/${itemId}/`, data);
+export const bulkValidateStagingItems = (payload) =>
+	apiClient.patch('/procurement/staging/bulk-validate/', payload);
 export const approveItem = (itemId) => apiClient.post(`/procurement/staging/${itemId}/approve/`);
-export const rejectItem = (itemId) => apiClient.post(`/procurement/staging/${itemId}/reject/`);
+export const rejectItem = (itemId, data = {}) => apiClient.post(`/procurement/staging/${itemId}/reject/`, data);
 export const getEtapes = (marcheId) =>
 	apiClient.get('/procurement/etapes/', { params: { id_marche: marcheId } });
 export const updateEtape = (etapeId, data) => apiClient.patch(`/procurement/etapes/${etapeId}/`, data);

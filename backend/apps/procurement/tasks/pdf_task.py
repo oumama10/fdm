@@ -1,6 +1,5 @@
 import logging
 import os
-from decimal import Decimal
 
 from celery.exceptions import MaxRetriesExceededError
 from django.db import transaction
@@ -17,7 +16,7 @@ def _mark_rejected(import_id: int, observations: str = "") -> None:
             imp = ImportExcelBC.objects.select_for_update().filter(pk=import_id).first()
             if not imp:
                 return
-            imp.statut_import = "rejete"
+            imp.statut_import = "non_conforme"
             imp.observations = observations[:2000]
             imp.save(update_fields=["statut_import", "observations"])
     except Exception:
@@ -34,7 +33,7 @@ def extract_pdf_items(self, import_id: int, retry_enabled: bool = True) -> None:
     try:
         with transaction.atomic():
             import_obj = ImportExcelBC.objects.select_for_update().get(pk=import_id)
-            import_obj.statut_import = "en_revision"
+            import_obj.statut_import = "en_attente"
             import_obj.save(update_fields=["statut_import"])
 
         file_path = import_obj.fichier_excel_original.path
@@ -45,12 +44,24 @@ def extract_pdf_items(self, import_id: int, retry_enabled: bool = True) -> None:
 
         import pdfplumber
         pages_text = []
+        table_rows = []
         with pdfplumber.open(file_path) as pdf:
             logger.info("[PDF TASK] Pages: %s", len(pdf.pages))
             for i, page in enumerate(pdf.pages, 1):
                 text = page.extract_text() or ""
                 if text:
                     pages_text.append(text)
+                try:
+                    tables = page.extract_tables() or []
+                    for table in tables:
+                        for row in table or []:
+                            if not row:
+                                continue
+                            normalized_row = [str(cell or "").strip() for cell in row]
+                            if any(normalized_row):
+                                table_rows.append(normalized_row)
+                except Exception:
+                    logger.exception("[PDF TASK] Failed to parse tables on page %s", i)
 
         raw_text = "\n".join(pages_text)
         logger.info("[PDF TASK] Total raw text chars: %s", len(raw_text))
@@ -58,7 +69,7 @@ def extract_pdf_items(self, import_id: int, retry_enabled: bool = True) -> None:
         if not raw_text.strip():
             raise ValueError("PDF produced no extractable text (possibly scanned)")
 
-        result = AIExtractor.extract_from_text(raw_text)
+        result = AIExtractor.extract_from_pdf(raw_text, table_rows)
         logger.info("[PDF TASK] source=%s lignes=%s", result.get("source"), len(result.get("lignes", [])))
         metadata = AIExtractor.build_import_metadata(result)
         if not metadata.get("titre_fichier"):
@@ -82,7 +93,7 @@ def extract_pdf_items(self, import_id: int, retry_enabled: bool = True) -> None:
         if not lignes:
             raise ValueError("No line items extracted from document")
 
-        _enrich_marche(import_obj.id_marche, metadata)
+        _enrich_marche(import_obj, metadata)
 
         staging_items = []
         for ligne in lignes:
@@ -93,17 +104,43 @@ def extract_pdf_items(self, import_id: int, retry_enabled: bool = True) -> None:
 
             quantite = max(1, min(int(ligne.get("quantite") or 1), 1_000_000))
 
+            # Apply NLP normalization to get category suggestions
+            from apps.procurement.tasks.nlp_normalizer import normalize_designation
+            normalized = normalize_designation(designation)
+
+            # Resolve category instance if ID provided
+            categorie_instance = None
+            if normalized.get("id_categorie_suggeree"):
+                from apps.resources.models import Categorie
+                try:
+                    categorie_instance = Categorie.objects.get(id_categorie=normalized["id_categorie_suggeree"])
+                except Categorie.DoesNotExist:
+                    categorie_instance = None
+
+            # Resolve resource instance if ID provided
+            ressource_instance = None
+            if normalized.get("id_ressource_liee"):
+                from apps.resources.models import Ressource
+                try:
+                    ressource_instance = Ressource.objects.get(id_ressource=normalized["id_ressource_liee"])
+                except Ressource.DoesNotExist:
+                    ressource_instance = None
+
             staging_items.append(
                 StagingItem(
                     id_import=import_obj,
                     designation_brute=designation,
                     description=description,
-                    designation_normalisee=designation[:255],
+                    designation_normalisee=normalized["designation_normalisee"],
                     quantite=quantite,
                     unite=str(ligne.get("unite") or "U"),
                     prix_unitaire_ht=ligne.get("prix_unitaire_ht"),
                     prix_total_ht=ligne.get("prix_total_ht"),
-                    confiance_ia=Decimal("0.90") if result.get("source") == "llm" else Decimal("0.50"),
+                    type_detecte=normalized.get("type_detecte", ""),
+                    id_categorie_suggeree=categorie_instance,
+                    categorie_suggeree_nom=normalized.get("categorie_suggeree_nom", ""),
+                    sous_categorie_suggeree_nom=normalized.get("sous_categorie_suggeree_nom", ""),
+                    id_ressource_liee=ressource_instance,
                     statut="en_attente",
                 )
             )
@@ -115,7 +152,7 @@ def extract_pdf_items(self, import_id: int, retry_enabled: bool = True) -> None:
 
         with transaction.atomic():
             import_obj.refresh_from_db()
-            import_obj.statut_import = "brouillon"
+            import_obj.statut_import = "en_attente"
             import_obj.save(update_fields=["statut_import"])
 
         logger.info("[PDF TASK] DONE import_id=%s", import_id)
@@ -132,12 +169,26 @@ def extract_pdf_items(self, import_id: int, retry_enabled: bool = True) -> None:
             _mark_rejected(import_id, f"Extraction PDF échouée après retries: {str(exc)[:1800]}")
 
 
-def _enrich_marche(marche, metadata: dict) -> None:
+def _enrich_marche(import_obj, metadata: dict) -> None:
+    from apps.procurement.models import MarcheBC
     from apps.users.models import Fournisseur
+    marche = import_obj.id_marche
     try:
         ref = metadata.get("reference_document")
         if ref and "IMPORT-" in marche.reference:
-            marche.reference = ref
+            # Check if a marche with this reference already exists
+            existing_marche = MarcheBC.objects.filter(reference=ref).exclude(pk=marche.pk).first()
+            if existing_marche:
+                # Update the import to use the existing marche instead
+                import_obj.id_marche = existing_marche
+                import_obj.save(update_fields=["id_marche"])
+                # Delete the temporary marche we created
+                marche.delete()
+                logger.info("[PDF TASK] Using existing MarcheBC reference=%s", ref)
+                return
+            else:
+                # Update the reference of our temporary marche
+                marche.reference = ref
 
         nom = metadata.get("fournisseur_denomination")
         if nom:

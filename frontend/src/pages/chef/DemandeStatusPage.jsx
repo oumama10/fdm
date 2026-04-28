@@ -11,7 +11,7 @@ const steps = ['Soumise', 'En cours', 'Validée', 'Décharge générée', 'Sign�
 function getStepIndex(demande, decharge) {
   if (!demande) return 0;
   if (!decharge) {
-    if (demande.statut === 'validee') return 2;
+    if (demande.statut === 'partielle' || demande.statut === 'totale') return 2;
     if (demande.statut === 'en_cours') return 1;
     if (demande.statut === 'refusee') return 1;
     return 0;
@@ -80,10 +80,10 @@ export default function DemandeStatusPage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <h1 style={{ margin: 0 }}>Statut demande #{demande.id_demande}</h1>
+    <div className="page-stack">
+      <h1 className="page-title">Statut demande #{demande.id_demande}</h1>
 
-      <section style={sectionStyle}>
+      <section className="section-shell">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 8 }}>
           {steps.map((step, index) => (
             <div key={step} style={{ textAlign: 'center' }}>
@@ -109,26 +109,33 @@ export default function DemandeStatusPage() {
         </div>
       </section>
 
-      <section style={sectionStyle}>
-        <h3 style={{ marginTop: 0 }}>Articles demandés</h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+      {demande.statut === 'refusee' && demande.commentaire_validation && (
+        <section className="section-shell" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#991b1b', marginBottom: 6 }}>Motif du refus</div>
+          <div style={{ fontSize: 14, color: '#b91c1c' }}>{demande.commentaire_validation}</div>
+        </section>
+      )}
+
+      <section className="section-shell">
+        <h3 className="section-title">Articles demandés</h3>
+        <table className="data-table" style={{ fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-              <th style={thStyle}>Article</th>
-              <th style={thStyle}>Qté demandée</th>
-              <th style={thStyle}>Qté accordée</th>
-              <th style={thStyle}>Statut</th>
+            <tr>
+              <th>Article</th>
+              <th>Qté demandée</th>
+              <th>Qté accordée</th>
+              <th>Statut</th>
             </tr>
           </thead>
           <tbody>
             {(demande.lignes || []).map((line) => {
               const accordee = Number(line.quantite_accordee || 0);
               return (
-                <tr key={line.id_ligne} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={tdStyle}>{line.ressource?.designation || '—'}</td>
-                  <td style={tdStyle}>{line.quantite_demandee}</td>
-                  <td style={tdStyle}>{accordee}</td>
-                  <td style={tdStyle}>{accordee > 0 ? 'accordé' : 'non disponible'}</td>
+                <tr key={line.id_ligne}>
+                  <td>{line.ressource?.designation || '—'}</td>
+                  <td>{line.quantite_demandee}</td>
+                  <td>{accordee}</td>
+                  <td>{accordee > 0 ? 'accordé' : 'non disponible'}</td>
                 </tr>
               );
             })}
@@ -137,24 +144,24 @@ export default function DemandeStatusPage() {
       </section>
 
       {decharge ? (
-        <section style={sectionStyle}>
-          <h3 style={{ marginTop: 0 }}>Décharge</h3>
+        <section className="section-shell">
+          <h3 className="section-title">Décharge</h3>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button style={secondaryButton} onClick={handleDownload}>Télécharger décharge PDF</button>
+            <button className="btn btn-secondary" onClick={handleDownload}>Télécharger décharge PDF</button>
             {decharge.statut_signature === 'en_attente' ? (
               <button
-                style={primaryButton}
+                className="btn btn-primary"
                 onClick={() => navigate(`/chef/decharges/${decharge.id_decharge}/signer`)}
               >
-                Uploader scan signé
+                Consulter la décharge
               </button>
             ) : null}
           </div>
         </section>
       ) : null}
 
-      <section style={sectionStyle}>
-        <h3 style={{ marginTop: 0 }}>Historique notifications</h3>
+      <section className="section-shell">
+        <h3 className="section-title">Historique notifications</h3>
         {notifHistory.length === 0 ? (
           <div style={{ color: '#6b7280' }}>Aucune notification liée.</div>
         ) : (
@@ -173,30 +180,3 @@ export default function DemandeStatusPage() {
     </div>
   );
 }
-
-const sectionStyle = {
-  border: '1px solid #e5e7eb',
-  borderRadius: 12,
-  background: '#fff',
-  padding: 12,
-};
-
-const thStyle = { padding: 10, fontWeight: 600 };
-const tdStyle = { padding: 10 };
-
-const primaryButton = {
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#111827',
-  color: '#fff',
-  cursor: 'pointer',
-};
-
-const secondaryButton = {
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#fff',
-  cursor: 'pointer',
-};

@@ -80,12 +80,12 @@ export default function MouvementsPage() {
       >
         <label style={labelStyle}>
           Date début
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={inputStyle} />
+          <input type="date" name="filter-date-from" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={inputStyle} />
         </label>
 
         <label style={labelStyle}>
           Date fin
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={inputStyle} />
+          <input type="date" name="filter-date-to" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={inputStyle} />
         </label>
 
         <label style={labelStyle}>

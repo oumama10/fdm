@@ -1,0 +1,37 @@
+@startuml
+title Workflow 4 - Demande to Decharge
+
+skinparam backgroundColor #ffffff
+skinparam shadowing false
+skinparam ArrowColor #1E40AF
+skinparam ActivityBorderColor #2563EB
+skinparam ActivityBackgroundColor #F8FAFC
+
+start
+:Chef service creates DEMANDE + LIGNE_DEMANDE;
+:Gestionnaire reviews availability;
+
+if (Stock/instances fully available?) then (yes)
+  :Validate DEMANDE;
+  :Generate DECHARGE + LIGNE_DECHARGE;
+  :Gestionnaire prints DECHARGE;
+  :Deliver articles to chef de service;
+  :Chef de service signs DECHARGE (non signe -> signe);
+  :Gestionnaire confirms signature;
+
+  if (Line type consommable?) then (yes)
+    :Decrease STOCK quantity;
+    :Write MOUVEMENT_STOCK(sortie);
+  else (no)
+    :Assign INSTANCE_RESSOURCE to service;
+    :Update instance statut=en_service;
+    :Write MOUVEMENT_STOCK(sortie/transfert);
+  endif
+
+  :Automatic stock/resources update;
+  :Finalize DEMANDE status;
+else (no)
+  :Refuse or keep pending;
+endif
+stop
+@enduml

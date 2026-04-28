@@ -11,10 +11,18 @@ class MarcheBC(models.Model):
         ("bon_commande", "bon_commande"),
         ("donation", "donation"),
     ]
+    DONATEUR_TYPE_CHOICES = [
+        ("interne", "Interne (enseignant, decanat...)"),
+        ("externe", "Externe (association, organisation internationale...)"),
+    ]
     STATUT_CHOICES = [
         ("en_attente_livraison", "en_attente_livraison"),
         ("receptionne_et_stocke", "receptionne_et_stocke"),
         ("non_conforme", "non_conforme"),
+    ]
+    STATUT_SIGNATURE_COMMANDE_CHOICES = [
+        ("non_signe", "non_signe"),
+        ("signe", "signe"),
     ]
     DELAIS_PAR_TYPE = {
         "marche": 90,
@@ -34,11 +42,34 @@ class MarcheBC(models.Model):
         default="en_attente_livraison",
     )
     fichier_cps = models.FileField(upload_to="marches/cps/", blank=True, null=True)
+    type_donateur = models.CharField(
+        max_length=20,
+        choices=DONATEUR_TYPE_CHOICES,
+        blank=True,
+        null=True,
+    )
+    nom_donateur = models.CharField(max_length=200, blank=True, null=True)
+    organisme_donateur = models.CharField(max_length=200, blank=True, null=True)
+    contact_donateur = models.CharField(max_length=100, blank=True, null=True)
+    beneficiaire_commande = models.CharField(max_length=255, blank=True, default="")
+    statut_signature_commande = models.CharField(
+        max_length=20,
+        choices=STATUT_SIGNATURE_COMMANDE_CHOICES,
+        default="non_signe",
+    )
+    date_signature_commande = models.DateTimeField(null=True, blank=True)
     id_fournisseur = models.ForeignKey(
         "users.Fournisseur",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+    )
+    id_demande_source = models.OneToOneField(
+        "requests.Demande",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="commande_interne",
     )
     id_cree_par = models.ForeignKey(
         "users.Utilisateur",
@@ -135,10 +166,11 @@ class MarcheEtape(models.Model):
 
 class ImportExcelBC(models.Model):
     STATUT_IMPORT_CHOICES = [
-        ("brouillon", "brouillon"),
+        ("en_attente", "en_attente"),
         ("en_revision", "en_revision"),
         ("valide", "valide"),
-        ("rejete", "rejete"),
+        ("non_conforme", "non_conforme"),
+        ("autre", "autre"),
     ]
     SOURCE_TYPE_CHOICES = [
         ("bc", "bc"),
@@ -163,7 +195,7 @@ class ImportExcelBC(models.Model):
     statut_import = models.CharField(
         max_length=20,
         choices=STATUT_IMPORT_CHOICES,
-        default="brouillon",
+        default="en_attente",
     )
     file_type = models.CharField(
         max_length=10,
@@ -198,6 +230,11 @@ class StagingItem(models.Model):
         ("consommable", "consommable"),
         ("bien_inventaire", "bien_inventaire"),
     ]
+    MOTIF_REJET_CHOICES = [
+        ("non_conforme", "non_conforme"),
+        ("document_invalide", "document_invalide"),
+        ("autre", "autre"),
+    ]
     STATUT_CHOICES = [
         ("en_attente", "en_attente"),
         ("approuve", "approuve"),
@@ -211,15 +248,10 @@ class StagingItem(models.Model):
     designation_normalisee = models.CharField(max_length=255, blank=True)
     quantite = models.IntegerField(default=0)
     type_detecte = models.CharField(max_length=20, choices=TYPE_DETECTE_CHOICES, blank=True)
-    confiance_ia = models.DecimalField(
-        max_digits=4,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        validators=[MinValueValidator(0), MaxValueValidator(1)],
-    )
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="en_attente")
     correction_gestionnaire = models.TextField(blank=True)
+    motif_rejet = models.CharField(max_length=40, choices=MOTIF_REJET_CHOICES, blank=True, default="")
+    commentaire_rejet = models.TextField(blank=True, default="")
     prix_unitaire_ht = models.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -250,6 +282,8 @@ class StagingItem(models.Model):
         null=True,
         blank=True,
     )
+    categorie_suggeree_nom = models.CharField(max_length=200, blank=True, default="")
+    sous_categorie_suggeree_nom = models.CharField(max_length=200, blank=True, default="")
 
     class Meta:
         verbose_name = "element de staging"
@@ -260,7 +294,7 @@ class StagingItem(models.Model):
 
     @property
     def needs_review(self):
-        return self.confiance_ia is not None and self.confiance_ia < 0.70
+        return self.statut == "en_attente"
 
 
 class LotArticle(models.Model):

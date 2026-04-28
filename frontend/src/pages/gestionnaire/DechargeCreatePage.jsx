@@ -13,6 +13,7 @@ export default function DechargeCreatePage() {
   const demandeQuery = useQuery({
     queryKey: ['demandes', 'detail', demande_id],
     queryFn: () => getDemandeById(demande_id),
+    enabled: !!demande_id,
     staleTime: 30000,
   });
 
@@ -112,17 +113,17 @@ export default function DechargeCreatePage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <h1 style={{ margin: 0 }}>Créer la décharge — Demande #{demande_id}</h1>
+    <div className="page-stack">
+      <h1 className="page-title">Créer la décharge - Demande #{demande_id}</h1>
 
-      <section style={sectionStyle}>
-        <h3 style={{ marginTop: 0, marginBottom: 10 }}>Lignes</h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+      <section className="section-shell">
+        <h3 className="section-title">Lignes</h3>
+        <table className="data-table" style={{ fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-              <th style={thStyle}>Article</th>
-              <th style={thStyle}>Catégorie</th>
-              <th style={thStyle}>Qté / Instance</th>
+            <tr>
+              <th>Article</th>
+              <th>Catégorie</th>
+              <th>Qté / Instance</th>
             </tr>
           </thead>
           <tbody>
@@ -130,10 +131,10 @@ export default function DechargeCreatePage() {
               const availableInstances = availableInstancesByResource.get(String(ligne.id_ressource)) || [];
 
               return (
-                <tr key={ligne.id_ligne} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={tdStyle}>{ligne.ressource?.designation || '—'}</td>
-                  <td style={tdStyle}>{ligne.ressource?.categorie_nom || '—'}</td>
-                  <td style={tdStyle}>
+                <tr key={ligne.id_ligne}>
+                  <td>{ligne.ressource?.designation || '—'}</td>
+                  <td>{ligne.ressource?.categorie_nom || '—'}</td>
+                  <td>
                     {isCons ? (
                       <input
                         type="number"
@@ -148,7 +149,7 @@ export default function DechargeCreatePage() {
                             },
                           }))
                         }
-                        style={inputStyle}
+                        className="field-input"
                       />
                     ) : (
                       <select
@@ -162,7 +163,7 @@ export default function DechargeCreatePage() {
                             },
                           }))
                         }
-                        style={inputStyle}
+                        className="field-input"
                       >
                         <option value="">Sélectionner instance</option>
                         {availableInstances.map((inst) => (
@@ -180,16 +181,16 @@ export default function DechargeCreatePage() {
         </table>
       </section>
 
-      <section style={sectionStyle}>
+      <section className="section-shell">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <label style={labelStyle}>
+          <label className="field-label">
             Date livraison
-            <input type="date" value={dateLivraison} onChange={(e) => setDateLivraison(e.target.value)} style={inputStyle} />
+            <input type="date" name="date-livraison" value={dateLivraison} onChange={(e) => setDateLivraison(e.target.value)} className="field-input" />
           </label>
 
-          <label style={labelStyle}>
+          <label className="field-label">
             Livré à (chef service)
-            <select value={idLivreA} onChange={(e) => setIdLivreA(e.target.value)} style={inputStyle}>
+            <select value={idLivreA} onChange={(e) => setIdLivreA(e.target.value)} className="field-input">
               <option value="">Sélectionner</option>
               {chefs.map((chef) => (
                 <option key={chef.id} value={chef.id}>{chef.nom}</option>
@@ -198,55 +199,17 @@ export default function DechargeCreatePage() {
           </label>
         </div>
 
-        <label style={{ ...labelStyle, marginTop: 10 }}>
+        <label className="field-label" style={{ marginTop: 10 }}>
           Observation
-          <textarea value={observation} onChange={(e) => setObservation(e.target.value)} rows={3} style={textareaStyle} />
+          <textarea value={observation} onChange={(e) => setObservation(e.target.value)} rows={3} className="field-input" style={{ resize: 'vertical' }} />
         </label>
       </section>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button style={primaryButton} onClick={handleSubmit} disabled={createMutation.isPending}>
+        <button className="btn btn-primary" onClick={handleSubmit} disabled={createMutation.isPending}>
           {createMutation.isPending ? 'Création...' : 'Créer la décharge'}
         </button>
       </div>
     </div>
   );
 }
-
-const sectionStyle = {
-  border: '1px solid #e5e7eb',
-  borderRadius: 12,
-  background: '#fff',
-  padding: 12,
-};
-
-const thStyle = { padding: 10, fontWeight: 600 };
-const tdStyle = { padding: 10 };
-
-const labelStyle = {
-  display: 'grid',
-  gap: 6,
-  fontSize: 13,
-  color: '#374151',
-};
-
-const inputStyle = {
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '8px 10px',
-  fontSize: 14,
-};
-
-const textareaStyle = {
-  ...inputStyle,
-  resize: 'vertical',
-};
-
-const primaryButton = {
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#111827',
-  color: '#fff',
-  cursor: 'pointer',
-};
