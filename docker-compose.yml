@@ -1,0 +1,80 @@
+version: "3.9"
+
+services:
+
+  # ── Redis (broker Celery) ──────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # ── Backend Django ─────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app          # bind-mount : hot reload + db.sqlite3 persiste dans ./backend/
+      - media_data:/app/media   # fichiers uploadés / PDF générés
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    command: python manage.py runserver 0.0.0.0:8000
+    restart: unless-stopped
+
+  # ── Frontend React/Vite ────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    ports:
+      - "5173:5173"
+    env_file:
+      - .env
+    depends_on:
+      - backend
+    command: npm run dev -- --host
+    restart: unless-stopped
+
+  # ── Celery Worker ──────────────────────────────────────────────────────────
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app
+      - media_data:/app/media
+    env_file:
+      - .env
+    depends_on:
+      - backend
+      - redis
+    command: celery -A config worker -l info -Q ocr,pdf,alerts
+    restart: unless-stopped
+
+  # ── Celery Beat (tâches périodiques) ──────────────────────────────────────
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app
+      - media_data:/app/media
+    env_file:
+      - .env
+    depends_on:
+      - celery_worker
+    command: >
+      celery -A config beat -l info
+      --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    restart: unless-stopped
+
+volumes:
+  media_data:

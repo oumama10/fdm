@@ -4,8 +4,63 @@ import { useQuery } from '@tanstack/react-query';
 import { getRetours } from '../../api/returns';
 import RetourCreateModal from './RetourCreateModal';
 
+// ── Design tokens ──────────────────────────────────────────────────────────
+const T = {
+  green: '#0F6E56', lightGreen: '#1D9E75',
+  textDark: '#0f172a', textMid: '#374151', textMuted: '#64748b',
+  border: '#e2e8f0', bgWhite: '#ffffff', bgSubtle: '#f8fafc',
+  radius: 12, radiusSm: 8,
+};
+
+const MOTIF_BADGE = {
+  panne:      { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', label: 'Panne' },
+  inutilise:  { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1', label: 'Inutilisée' },
+  endommage:  { bg: '#fef3c7', color: '#92400e', border: '#fcd34d', label: 'Endommagé' },
+  autre:      { bg: '#ede9fe', color: '#5b21b6', border: '#c4b5fd', label: 'Autre' },
+};
+
+const DECISION_BADGE = {
+  repare:     { bg: '#bbf7d0', color: '#14532d', border: '#86efac', label: 'Réparé' },
+  non_repare: { bg: '#fef3c7', color: '#92400e', border: '#fcd34d', label: 'Non réparé' },
+  rebut:      { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', label: 'Rebut' },
+  reaffecte:  { bg: '#dbeafe', color: '#1e3a8a', border: '#93c5fd', label: 'Réaffecté' },
+};
+
+function MotifBadge({ value }) {
+  const s = MOTIF_BADGE[value] || { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1', label: value };
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+    }}>
+      {s.label}
+    </span>
+  );
+}
+
+function EtatBadge({ decision }) {
+  if (!decision) {
+    return (
+      <span style={{ fontSize: 12, color: T.textMuted, fontStyle: 'italic' }}>En attente</span>
+    );
+  }
+  const s = DECISION_BADGE[decision] || { bg: '#bbf7d0', color: '#14532d', border: '#86efac', label: decision };
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+    }}>
+      {s.label}
+    </span>
+  );
+}
+
 export default function RetoursPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [motifFilter, setMotifFilter] = useState('');
+  const [etatFilter,  setEtatFilter]  = useState('');
 
   const retoursQuery = useQuery({
     queryKey: ['chef', 'retours'],
@@ -14,48 +69,105 @@ export default function RetoursPage() {
   });
 
   const rows = useMemo(() => {
-    return [...(retoursQuery.data?.data || [])].sort(
-      (a, b) => new Date(b.date_retour || 0) - new Date(a.date_retour || 0)
-    );
-  }, [retoursQuery.data?.data]);
+    const data = retoursQuery.data?.data || [];
+    return [...data]
+      .filter((r) => (motifFilter ? r.motif_retour === motifFilter : true))
+      .filter((r) => {
+        if (!etatFilter) return true;
+        if (etatFilter === 'en_attente') return !r.decision;
+        if (etatFilter === 'traite')     return Boolean(r.decision);
+        return true;
+      })
+      .sort((a, b) => new Date(b.date_retour || 0) - new Date(a.date_retour || 0));
+  }, [retoursQuery.data?.data, motifFilter, etatFilter]);
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0 }}>Mes Retours</h1>
-        <button style={primaryButton} onClick={() => setShowCreateModal(true)}>
-          Signaler un retour
+    <div style={{ display: 'grid', gap: 16, paddingBottom: 40 }}>
+      {/* ── Action bar ── */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button style={btnPrimary} onClick={() => setShowCreateModal(true)}>
+          + Soumettre un retour
         </button>
       </div>
 
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+      {/* ── Table shell ── */}
+      <div style={tableShell}>
+
+        {/* Toolbar / filters */}
+        <div style={toolbar}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={filterLabel}>Motif</span>
+              <select value={motifFilter} onChange={(e) => setMotifFilter(e.target.value)} style={selectStyle}>
+                <option value="">Tous</option>
+                <option value="panne">Panne</option>
+                <option value="inutilise">Inutilisée</option>
+                <option value="endommage">Endommagé</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={filterLabel}>État</span>
+              <select value={etatFilter} onChange={(e) => setEtatFilter(e.target.value)} style={selectStyle}>
+                <option value="">Tous</option>
+                <option value="en_attente">En attente</option>
+                <option value="traite">Traité</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Table */}
         {retoursQuery.isLoading ? (
-          <div style={{ padding: 14 }}><div style={{ height: 180, borderRadius: 8, background: '#f3f4f6' }} /></div>
+          <div style={{ padding: 20 }}>
+            <div style={{ height: 180, borderRadius: T.radiusSm, background: T.bgSubtle }} />
+          </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-                <th style={thStyle}>Date</th>
-                <th style={thStyle}>Ressource</th>
-                <th style={thStyle}>Motif</th>
-                <th style={thStyle}>Décision</th>
-                <th style={thStyle}>Observation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr><td colSpan={5} style={{ padding: 16, color: '#6b7280' }}>Aucun retour.</td></tr>
-              ) : rows.map((row) => (
-                <tr key={row.id_retour} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={tdStyle}>{row.date_retour ? new Date(row.date_retour).toLocaleDateString('fr-FR') : '—'}</td>
-                  <td style={tdStyle}>{row.ressource?.designation || '—'}</td>
-                  <td style={tdStyle}>{row.motif_retour || '—'}</td>
-                  <td style={tdStyle}>{row.decision || '—'}</td>
-                  <td style={tdStyle}>{row.observation || '—'}</td>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr>
+                  {['Date', 'Ressource', 'N° inventaire', 'Motif', 'État', 'Observation'].map((h) => (
+                    <th key={h} style={thStyle}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ padding: '24px 12px', color: T.textMuted, fontSize: 13, textAlign: 'center' }}>
+                      Aucun retour trouvé.
+                    </td>
+                  </tr>
+                ) : rows.map((row) => (
+                  <tr
+                    key={row.id_retour}
+                    style={{ borderTop: `1px solid ${T.border}` }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = T.bgSubtle; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
+                  >
+                    <td style={{ ...tdStyle, color: T.textMid }}>
+                      {row.date_retour ? new Date(row.date_retour).toLocaleDateString('fr-FR') : '—'}
+                    </td>
+                    <td style={{ ...tdStyle, fontWeight: 600, color: T.textDark }}>
+                      {row.ressource?.designation || '—'}
+                    </td>
+                    <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12, color: T.textMuted }}>
+                      {row.instance_ressource?.numero_inventaire || '—'}
+                    </td>
+                    <td style={tdStyle}><MotifBadge value={row.motif_retour} /></td>
+                    <td style={tdStyle}><EtatBadge decision={row.decision} /></td>
+                    <td style={{ ...tdStyle, color: T.textMid, maxWidth: 220 }}>
+                      {row.observation
+                        ? <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{row.observation}</span>
+                        : <span style={{ color: T.textMuted }}>—</span>
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -66,14 +178,14 @@ export default function RetoursPage() {
   );
 }
 
-const primaryButton = {
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#111827',
-  color: '#fff',
-  cursor: 'pointer',
+// ── Styles ─────────────────────────────────────────────────────────────────
+const tableShell  = { border: `1px solid ${T.border}`, borderRadius: T.radius, overflow: 'hidden', background: T.bgWhite };
+const toolbar     = { padding: '12px 16px', background: T.bgSubtle, borderBottom: `1px solid ${T.border}` };
+const thStyle     = { padding: '9px 12px', fontSize: 12, fontWeight: 700, color: T.textMuted, textAlign: 'left', borderBottom: `1px solid ${T.border}`, background: T.bgSubtle };
+const tdStyle     = { padding: '10px 12px', fontSize: 13, color: T.textMid, verticalAlign: 'middle' };
+const selectStyle = { border: `1px solid ${T.border}`, borderRadius: T.radiusSm, padding: '7px 10px', fontSize: 13, color: T.textDark, background: T.bgWhite };
+const filterLabel = { fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' };
+const btnPrimary  = {
+  border: 'none', borderRadius: T.radiusSm, padding: '9px 16px',
+  background: T.green, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer',
 };
-
-const thStyle = { padding: 10, fontWeight: 600 };
-const tdStyle = { padding: 10 };

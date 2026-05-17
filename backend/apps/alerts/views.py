@@ -3,10 +3,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.core.permissions import (
-    IsGestionnaireOrAdmin,
-    IsServiceFinanciere,
-)
+from apps.core.permissions import IsGestionnaireOrAdmin
 
 from .models import AlerteDelai, Notification
 from .serializers import AlerteDelaiSerializer, NotificationSerializer
@@ -25,12 +22,12 @@ class AlerteDelaiViewSet(
 ):
     """
     Read + acquitte patch.  No create or destroy via API.
-    Permission : IsGestionnaireOrAdmin | IsServiceFinanciere
+    Permission : IsGestionnaireOrAdmin only (gestionnaire_magasin and admin)
     Default filter : acquitte=False (pass ?acquitte=true to include acquitted)
     """
 
     serializer_class = AlerteDelaiSerializer
-    permission_classes = [(IsGestionnaireOrAdmin | IsServiceFinanciere)]
+    permission_classes = [IsGestionnaireOrAdmin]
     http_method_names = ["get", "patch", "head", "options"]
 
     def get_queryset(self):
@@ -54,6 +51,19 @@ class AlerteDelaiViewSet(
         # the serializer marks all other fields as read_only.
         serializer.save()
 
+    @action(detail=True, methods=["patch"], url_path="acquitter")
+    def acquitter(self, request, pk=None):
+        """Mark an alert as acknowledged — sets acquitte=True."""
+        alerte = self.get_object()
+        if alerte.acquitte:
+            return Response(
+                {"detail": "Cette alerte est déjà acquittée."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        alerte.acquitte = True
+        alerte.save(update_fields=["acquitte"])
+        return Response(AlerteDelaiSerializer(alerte).data, status=status.HTTP_200_OK)
+
 
 # ---------------------------------------------------------------------------
 # NotificationViewSet
@@ -64,52 +74,77 @@ class NotificationViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     """
     Each authenticated user sees only their own notifications.
 
-    list                             GET  /notifications/
-    marquer_lu                       POST /notifications/{id}/marquer_lu/
-    tout_marquer_lu                  POST /notifications/tout_marquer_lu/
+    list                             GET  /notifications/?page=1&limit=10
+    unread-count                     GET  /notifications/unread-count/
+    mark-all-lu                      PATCH /notifications/mark-all-lu/
+    lu (mark single as read)         PATCH /notifications/{id}/lu/
     """
 
     serializer_class = NotificationSerializer
 
     def get_permissions(self):
-        # Any authenticated user may manage their own notifications.
-        from rest_framework.permissions import IsAuthenticated  # noqa: PLC0415
+        from rest_framework.permissions import IsAuthenticated
 
         return [IsAuthenticated()]
 
     def get_queryset(self):
         qs = Notification.objects.filter(
-            id_destinataire=self.request.user
-        ).select_related("content_type").order_by("-date_envoi")
-
-        # Optional: ?lu=true/false  to filter read/unread
-        lu_param = self.request.query_params.get("lu")
-        if lu_param is not None:
-            qs = qs.filter(lu=lu_param.lower() == "true")
-
+            destinataire=self.request.user
+        ).order_by("-created_at")
         return qs
 
-    # ── marquer_lu ────────────────────────────────────────────────────────────
+    def paginate_queryset(self, queryset):
+        """Custom pagination handling for unread count"""
+        limit = int(self.request.query_params.get("limit", 10))
+        page = int(self.request.query_params.get("page", 1))
+        start = (page - 1) * limit
+        end = start + limit
+        return queryset[start:end]
 
-    @action(detail=True, methods=["post"], url_path="marquer_lu")
-    def marquer_lu(self, request, pk=None):
+    def list(self, request, *args, **kwargs):
+        """List notifications with optional pagination"""
+        queryset = self.get_queryset()
+        paginated = self.paginate_queryset(queryset)
+        serializer = self.get_serializer(paginated, many=True)
+        return Response(serializer.data)
+
+    # ── unread-count ──────────────────────────────────────────────────────────
+
+    @action(detail=False, methods=["get"], url_path="unread-count")
+    def unread_count(self, request):
+        """Get count of unread notifications"""
+        count = Notification.objects.filter(
+            destinataire=request.user, lu=False
+        ).count()
+        response = Response({"count": count}, status=status.HTTP_200_OK)
+        response["Cache-Control"] = "max-age=25, private"
+        return response
+
+    # ── lu (mark single as read) ──────────────────────────────────────────────
+
+    @action(detail=True, methods=["patch"], url_path="lu")
+    def lu(self, request, pk=None):
+        """Mark a single notification as read"""
         notif = self.get_object()
-        if not notif.lu:
-            notif.lu = True
-            notif.date_lecture = timezone.now()
-            notif.save(update_fields=["lu", "date_lecture"])
+        if notif.destinataire != request.user:
+            return Response(
+                {"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+        notif.lu = True
+        notif.save(update_fields=["lu"])
         return Response(
             NotificationSerializer(notif).data, status=status.HTTP_200_OK
         )
 
-    # ── tout_marquer_lu ───────────────────────────────────────────────────────
+    # ── mark-all-lu ───────────────────────────────────────────────────────────
 
-    @action(detail=False, methods=["post"], url_path="tout_marquer_lu")
-    def tout_marquer_lu(self, request):
+    @action(detail=False, methods=["patch"], url_path="mark-all-lu")
+    def mark_all_lu(self, request):
+        """Mark all notifications as read for current user"""
         updated = Notification.objects.filter(
-            id_destinataire=request.user, lu=False
-        ).update(lu=True, date_lecture=timezone.now())
+            destinataire=request.user, lu=False
+        ).update(lu=True)
         return Response(
-            {"detail": f"{updated} notification(s) marquée(s) comme lues."},
+            {"detail": f"{updated} notification(s) marked as read."},
             status=status.HTTP_200_OK,
         )

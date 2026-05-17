@@ -49,8 +49,12 @@ class UtilisateurViewSet(viewsets.ModelViewSet):
 
 class ServiceViewSet(viewsets.ModelViewSet):
     serializer_class = ServiceSerializer
-    permission_classes = [IsAdmin]
     queryset = Service.objects.all().order_by("nom_service")
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [permissions.IsAuthenticated()]
+        return [IsAdmin()]
 
 
 class RoleViewSet(viewsets.ReadOnlyModelViewSet):

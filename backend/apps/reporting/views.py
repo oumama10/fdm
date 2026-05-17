@@ -41,7 +41,7 @@ class StockInstantaneView(APIView):
                     "categorie": r.id_categorie.nom_categorie,
                     "quantite_disponible": stock.quantite_disponible,
                     "seuil_alerte": stock.seuil_alerte,
-                    "alerte": stock.quantite_disponible <= stock.seuil_alerte,
+                    "alerte": stock.seuil_alerte is not None and stock.quantite_disponible <= stock.seuil_alerte,
                 }
             )
 
@@ -190,7 +190,6 @@ class BilanAnnuelView(APIView):
         marches_qs = MarcheBC.objects.filter(date_creation__year=annee)
         marches_stats = {
             "receptionnes": marches_qs.filter(statut="receptionne_et_stocke").count(),
-            "non_conformes": marches_qs.filter(statut="non_conforme").count(),
             "en_attente": marches_qs.filter(statut="en_attente_livraison").count(),
         }
         donations = marches_qs.filter(type_acquisition="donation").count()
@@ -233,10 +232,71 @@ class DashboardView(APIView):
     permission_classes = [IsGestionnaireOrAdmin]
 
     def get(self, request):
-        today = date.today()
+        today = timezone.localdate()
+        current_month = today.replace(day=1)
+        start_month = current_month
+        for _ in range(11):
+            start_month = (start_month.replace(day=1) - timedelta(days=1)).replace(day=1)
 
-        stock_alerts_count = Stock.objects.filter(
-            quantite_disponible__lte=F("seuil_alerte")
+        cons_alerts = Stock.objects.filter(
+            seuil_alerte__isnull=False,
+            quantite_disponible__lte=F("seuil_alerte"),
+        ).count()
+        bi_alerts = (
+            Ressource.objects.filter(
+                id_categorie__nom_categorie="Bien Inventaire",
+                seuil_alerte__isnull=False,
+            )
+            .annotate(
+                instances_en_stock=Count(
+                    "instanceressource",
+                    filter=Q(instanceressource__statut="en_stock"),
+                )
+            )
+            .filter(instances_en_stock__lte=F("seuil_alerte"))
+            .count()
+        )
+        stock_alerts_count = cons_alerts + bi_alerts
+
+        total_articles = InstanceRessource.objects.count()
+        total_articles_last_month = InstanceRessource.objects.filter(
+            date_acquisition__lt=current_month
+        ).count()
+
+        demandes_en_cours = Demande.objects.filter(statut="en_attente").count()
+        demandes_en_cours_last_month = Demande.objects.filter(
+            statut="en_attente",
+            date_demande__date__lt=current_month,
+        ).count()
+
+        consommables = (
+            Ressource.objects.filter(
+                id_categorie__nom_categorie="Consommable",
+                id_categorie__actif=True,
+            )
+            .select_related("id_categorie", "stock")
+            .order_by("designation")
+        )
+        consommables_count = 0
+        top_5_consommables = []
+        for ressource in consommables:
+            stock = getattr(ressource, "stock", None)
+            if stock is None:
+                continue
+            consommables_count += 1
+            top_5_consommables.append(
+                {
+                    "id": ressource.id_ressource,
+                    "designation": ressource.designation,
+                    "quantite_disponible": stock.quantite_disponible,
+                    "seuil_alerte": stock.seuil_alerte,
+                    "alerte": stock.seuil_alerte is not None and stock.quantite_disponible <= stock.seuil_alerte,
+                }
+            )
+
+        bien_inventaire_count = Ressource.objects.filter(
+            id_categorie__nom_categorie="Bien Inventaire",
+            id_categorie__actif=True,
         ).count()
 
         marches_en_attente = MarcheBC.objects.filter(
@@ -245,7 +305,6 @@ class DashboardView(APIView):
 
         marches_deadline_proche = (
             AlerteDelai.objects.filter(
-                date_echeance__gte=today,
                 date_echeance__lte=today + timedelta(days=7),
                 acquitte=False,
             )
@@ -254,30 +313,24 @@ class DashboardView(APIView):
             .count()
         )
 
-        demandes_en_cours = Demande.objects.filter(statut="en_cours").count()
-
         decharges_en_attente_signature = SignatureDecharge.objects.filter(
-            statut="en_attente"
+            statut="non_signe"
         ).count()
 
-        top_5_consommables = list(
-            LigneDemande.objects.filter(
-                id_demande__date_demande__year=today.year,
-                id_demande__date_demande__month=today.month,
-                id_ressource__id_categorie__nom_categorie="Consommable",
-            )
-            .values("id_ressource__id_ressource", "id_ressource__designation")
-            .annotate(total_demande=Sum("quantite_demandee"))
-            .order_by("-total_demande")[:5]
-        )
-
-        twelve_months_ago = (today.replace(day=1) - timedelta(days=365)).replace(
-            day=1
-        )
-        monthly_acquisitions = list(
+        monthly_entrees = list(
             MouvementStock.objects.filter(
                 type_mouvement="entree",
-                date_mouvement__gte=twelve_months_ago,
+                date_mouvement__date__gte=start_month,
+            )
+            .annotate(mois=TruncMonth("date_mouvement"))
+            .values("mois")
+            .annotate(total=Sum("quantite"))
+            .order_by("mois")
+        )
+        monthly_sorties = list(
+            MouvementStock.objects.filter(
+                type_mouvement="sortie",
+                date_mouvement__date__gte=start_month,
             )
             .annotate(mois=TruncMonth("date_mouvement"))
             .values("mois")
@@ -285,30 +338,196 @@ class DashboardView(APIView):
             .order_by("mois")
         )
 
+        monthly_map = {}
+        for row in monthly_entrees:
+            key = row["mois"].strftime("%Y-%m") if row["mois"] else None
+            if not key:
+                continue
+            monthly_map[key] = {
+                "mois": key,
+                "entrees": int(row["total"] or 0),
+                "sorties": 0,
+            }
+        for row in monthly_sorties:
+            key = row["mois"].strftime("%Y-%m") if row["mois"] else None
+            if not key:
+                continue
+            monthly_map.setdefault(key, {"mois": key, "entrees": 0, "sorties": 0})
+            monthly_map[key]["sorties"] = int(row["total"] or 0)
+
+        monthly_acquisitions = []
+        cursor = start_month
+        while cursor <= current_month:
+            key = cursor.strftime("%Y-%m")
+            monthly_acquisitions.append(
+                monthly_map.get(key, {"mois": key, "entrees": 0, "sorties": 0})
+            )
+            cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+        recent_demandes = [
+            {
+                "id": demande.id_demande,
+                "reference": f"DEM-{demande.date_demande.year}-{demande.id_demande:04d}",
+                "service": {
+                    "nom_service": demande.id_service.nom_service if demande.id_service else "—",
+                    "type_service": demande.id_service.type_service if demande.id_service else None,
+                },
+                "urgence": demande.urgence,
+                "statut": demande.statut,
+                "date_demande": demande.date_demande.isoformat(),
+            }
+            for demande in Demande.objects.select_related("id_service")
+            .order_by("-date_demande")[:5]
+        ]
+
+        active_alerts = [
+            {
+                "id": alerte.id_alerte,
+                "reference": alerte.id_marche.reference,
+                "id_marche": {"reference": alerte.id_marche.reference},
+                "jours": alerte.jours_restants,
+                "progress": _deadline_progress(alerte.jours_restants),
+                "niveau": alerte.niveau_alerte,
+                "date_echeance": alerte.date_echeance.isoformat(),
+                "timestamp": alerte.date_alerte.isoformat() if alerte.date_alerte else None,
+            }
+            for alerte in AlerteDelai.objects.select_related("id_marche")
+            .filter(acquitte=False, date_echeance__lte=today + timedelta(days=7))
+            .order_by("date_echeance")[:5]
+        ]
+
+        recent_activity = _build_dashboard_activity()
+
         return Response(
             {
+                "kpis": {
+                    "total_articles": total_articles,
+                    "delta_articles": _percentage_delta(total_articles, total_articles_last_month),
+                    "demandes_en_cours": demandes_en_cours,
+                    "delta_demandes": _percentage_delta(demandes_en_cours, demandes_en_cours_last_month),
+                    "decharges_en_attente": decharges_en_attente_signature,
+                    "stock_alerts": stock_alerts_count,
+                    "marches_en_attente": marches_en_attente,
+                    "marches_delai_proche": marches_deadline_proche,
+                },
+                "stock_alerts": stock_alerts_count,
                 "stock_alerts_count": stock_alerts_count,
                 "marches_en_attente": marches_en_attente,
+                "marches_delai_proche": marches_deadline_proche,
                 "marches_deadline_proche": marches_deadline_proche,
                 "demandes_en_cours": demandes_en_cours,
+                "decharges_en_attente": decharges_en_attente_signature,
                 "decharges_en_attente_signature": decharges_en_attente_signature,
-                "top_5_consommables": [
-                    {
-                        "id": item["id_ressource__id_ressource"],
-                        "designation": item["id_ressource__designation"],
-                        "total_demande": item["total_demande"],
-                    }
-                    for item in top_5_consommables
+                "monthly_acquisitions": monthly_acquisitions,
+                "category_distribution": [
+                    {"name": "Consommables", "value": consommables_count},
+                    {"name": "Biens inventaire", "value": bien_inventaire_count},
                 ],
-                "monthly_acquisitions": [
-                    {
-                        "mois": row["mois"].strftime("%Y-%m"),
-                        "total": row["total"],
-                    }
-                    for row in monthly_acquisitions
-                ],
+                "recent_demandes": recent_demandes,
+                "active_alerts": active_alerts,
+                "recent_activity": recent_activity,
+                "top_5_consommables": top_5_consommables[:5],
             }
         )
+
+
+def _percentage_delta(current_value, previous_value):
+    if previous_value in (None, 0):
+        return 100 if current_value else 0
+    return round(((current_value - previous_value) / previous_value) * 100)
+
+
+def _deadline_progress(days_remaining):
+    if days_remaining is None:
+        return None
+    if days_remaining <= 0:
+        return 100
+    return max(0, min(100, round(((7 - min(days_remaining, 7)) / 7) * 100)))
+
+
+def _format_time_ago(moment):
+    if not moment:
+        return ""
+    localized = timezone.localtime(moment) if timezone.is_aware(moment) else timezone.make_aware(moment)
+    delta = timezone.now() - localized
+    if delta.days > 0:
+        return f"il y a {delta.days}j"
+    hours = delta.seconds // 3600
+    if hours > 0:
+        return f"il y a {hours}h"
+    minutes = max(1, delta.seconds // 60)
+    return f"il y a {minutes}min"
+
+
+def _build_dashboard_activity():
+    events = []
+
+    for demande in Demande.objects.select_related("id_service").order_by("-date_demande")[:3]:
+        service_name = demande.id_service.nom_service if demande.id_service else "—"
+        events.append(
+            {
+                "id": f"demande-{demande.id_demande}",
+                "type": "demande_recue",
+                "title": f"Nouvelle demande #{demande.id_demande:04d}",
+                "description": service_name,
+                "timestamp": demande.date_demande,
+                "time_ago": _format_time_ago(demande.date_demande),
+            }
+        )
+
+    for signature in SignatureDecharge.objects.select_related("id_decharge").filter(
+        date_signature__isnull=False,
+    ).order_by("-date_signature")[:3]:
+        events.append(
+            {
+                "id": f"decharge-{signature.id_signature}",
+                "type": "decharge_signee",
+                "title": f"Décharge {signature.id_decharge.numero_decharge} signée",
+                "description": signature.statut,
+                "timestamp": signature.date_signature,
+                "time_ago": _format_time_ago(signature.date_signature),
+            }
+        )
+
+    for alerte in AlerteDelai.objects.select_related("id_marche").filter(acquitte=False).order_by("-date_alerte")[:3]:
+        days_remaining = alerte.jours_restants
+        events.append(
+            {
+                "id": f"alerte-{alerte.id_alerte}",
+                "type": "stock_alerte",
+                "title": f"Alerte délai {alerte.id_marche.reference}",
+                "description": (
+                    f"Échéance dépassée de {abs(days_remaining)}j"
+                    if days_remaining <= 0
+                    else f"{days_remaining}j restants"
+                ),
+                "timestamp": alerte.date_alerte,
+                "time_ago": _format_time_ago(alerte.date_alerte),
+            }
+        )
+
+    for mouvement in MouvementStock.objects.select_related("id_ressource").filter(
+        type_mouvement="entree",
+    ).order_by("-date_mouvement")[:3]:
+        events.append(
+            {
+                "id": f"mouvement-{mouvement.id_mouvement}",
+                "type": "import_valide",
+                "title": f"Entrée validée : {mouvement.id_ressource.designation}",
+                "description": f"+{mouvement.quantite} unité(s)",
+                "timestamp": mouvement.date_mouvement,
+                "time_ago": _format_time_ago(mouvement.date_mouvement),
+            }
+        )
+
+    events.sort(key=lambda item: item["timestamp"], reverse=True)
+    return [
+        {
+            **event,
+            "timestamp": event["timestamp"].isoformat() if event.get("timestamp") else None,
+        }
+        for event in events[:6]
+    ]
 
 
 class StatistiquesAchatsView(APIView):
@@ -358,5 +577,41 @@ class StatistiquesAchatsView(APIView):
                     }
                     for row in monthly
                 ]
+            }
+        )
+
+
+class DashboardSummaryView(APIView):
+    """GET /api/reporting/dashboard-summary/ — lightweight KPI snapshot."""
+
+    permission_classes = [IsGestionnaireOrAdmin]
+
+    def get(self, request):
+        from apps.procurement.models import ImportExcelBC  # noqa: PLC0415
+        from apps.returns.models import RetourMateriel    # noqa: PLC0415
+
+        consommables_count = Ressource.objects.filter(
+            id_categorie__nom_categorie="Consommable",
+            id_categorie__actif=True,
+        ).count()
+        biens_count = Ressource.objects.filter(
+            id_categorie__nom_categorie="Bien Inventaire",
+            id_categorie__actif=True,
+        ).count()
+        alertes_actives_count = AlerteDelai.objects.filter(acquitte=False).count()
+        demandes_en_attente_count = Demande.objects.filter(statut="en_attente").count()
+        retours_en_attente_count = RetourMateriel.objects.filter(statut="en_attente").count()
+        imports_en_revision_count = ImportExcelBC.objects.filter(
+            statut_import="en_revision"
+        ).count()
+
+        return Response(
+            {
+                "consommables_count": consommables_count,
+                "biens_count": biens_count,
+                "alertes_actives_count": alertes_actives_count,
+                "demandes_en_attente_count": demandes_en_attente_count,
+                "retours_en_attente_count": retours_en_attente_count,
+                "imports_en_revision_count": imports_en_revision_count,
             }
         )

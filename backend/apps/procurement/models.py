@@ -14,7 +14,6 @@ class MarcheBC(models.Model):
     STATUT_CHOICES = [
         ("en_attente_livraison", "en_attente_livraison"),
         ("receptionne_et_stocke", "receptionne_et_stocke"),
-        ("non_conforme", "non_conforme"),
     ]
     DELAIS_PAR_TYPE = {
         "marche": 90,
@@ -22,9 +21,15 @@ class MarcheBC(models.Model):
         "donation": 0,
     }
 
+    SOURCE_CHOICES = [
+        ("manuel", "manuel"),
+        ("import", "import"),
+    ]
+
     id_marche = models.AutoField(primary_key=True)
     reference = models.CharField(max_length=100, unique=True)
     type_acquisition = models.CharField(max_length=20, choices=TYPE_ACQUISITION_CHOICES)
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default="manuel", db_index=True)
     date_creation = models.DateField(auto_now_add=True)
     delai_reception_jours = models.IntegerField()
     date_livraison_prevue = models.DateField(null=True, blank=True)
@@ -32,8 +37,13 @@ class MarcheBC(models.Model):
         max_length=30,
         choices=STATUT_CHOICES,
         default="en_attente_livraison",
+        db_index=True,
     )
     fichier_cps = models.FileField(upload_to="marches/cps/", blank=True, null=True)
+    type_donateur = models.CharField(max_length=50, blank=True, default="")
+    nom_donateur = models.CharField(max_length=255, blank=True, default="")
+    organisme_donateur = models.CharField(max_length=255, blank=True, default="")
+    contact_donateur = models.CharField(max_length=255, blank=True, default="")
     id_fournisseur = models.ForeignKey(
         "users.Fournisseur",
         on_delete=models.SET_NULL,
@@ -135,9 +145,12 @@ class MarcheEtape(models.Model):
 
 class ImportExcelBC(models.Model):
     STATUT_IMPORT_CHOICES = [
+        ("en_attente", "en_attente"),
         ("brouillon", "brouillon"),
         ("en_revision", "en_revision"),
         ("valide", "valide"),
+        ("non_conforme", "non_conforme"),
+        ("autre", "autre"),
         ("rejete", "rejete"),
     ]
     SOURCE_TYPE_CHOICES = [
@@ -164,6 +177,7 @@ class ImportExcelBC(models.Model):
         max_length=20,
         choices=STATUT_IMPORT_CHOICES,
         default="brouillon",
+        db_index=True,
     )
     file_type = models.CharField(
         max_length=10,
@@ -211,15 +225,10 @@ class StagingItem(models.Model):
     designation_normalisee = models.CharField(max_length=255, blank=True)
     quantite = models.IntegerField(default=0)
     type_detecte = models.CharField(max_length=20, choices=TYPE_DETECTE_CHOICES, blank=True)
-    confiance_ia = models.DecimalField(
-        max_digits=4,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        validators=[MinValueValidator(0), MaxValueValidator(1)],
-    )
-    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="en_attente")
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="en_attente", db_index=True)
     correction_gestionnaire = models.TextField(blank=True)
+    motif_rejet = models.CharField(max_length=255, blank=True, default="")
+    commentaire_rejet = models.TextField(blank=True, default="")
     prix_unitaire_ht = models.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -244,6 +253,13 @@ class StagingItem(models.Model):
         null=True,
         blank=True,
     )
+    id_sous_categorie_suggeree = models.ForeignKey(
+        "resources.SousCategorie",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staging_items",
+    )
     id_ressource_liee = models.ForeignKey(
         "resources.Ressource",
         on_delete=models.SET_NULL,
@@ -260,7 +276,7 @@ class StagingItem(models.Model):
 
     @property
     def needs_review(self):
-        return self.confiance_ia is not None and self.confiance_ia < 0.70
+        return self.statut == "en_attente"
 
 
 class LotArticle(models.Model):

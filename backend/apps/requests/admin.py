@@ -6,7 +6,7 @@ from .models import Demande, LigneDemande
 class LigneDemandeInline(admin.TabularInline):
     model = LigneDemande
     extra = 0
-    fields = ["id_ressource", "quantite_demandee", "quantite_accordee", "disponibilite_pct", "observation"]
+    fields = ["id_ressource", "quantite_demandee", "quantite_accordee", "observation"]
 
 
 @admin.register(Demande)

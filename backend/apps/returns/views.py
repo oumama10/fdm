@@ -1,12 +1,22 @@
-from rest_framework import viewsets
+from django.utils.timezone import now
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from apps.core.permissions import (
     IsChefService,
     IsGestionnaireOrAdmin,
 )
+from apps.resources.models import InstanceRessource, MouvementStock
 
 from .models import RetourMateriel
 from .serializers import RetourMaterielSerializer
+
+# Maps motif → (instance.etat, instance.statut)
+_MOTIF_ETAT = {
+    "panne":     ("hors_service", "hors_service"),
+    "inutilise": ("retourne",     "en_stock"),
+}
 
 
 class RetourMaterielViewSet(viewsets.ModelViewSet):
@@ -14,14 +24,10 @@ class RetourMaterielViewSet(viewsets.ModelViewSet):
     Permissions per action
     ----------------------
     create        : IsChefService | IsGestionnaireOrAdmin
-                    Chef → id_retourne_par forced to request.user, decision=''
-                    Gestionnaire → may set decision immediately
-    list          : IsGestionnaireOrAdmin → all
-                    IsChefService        → own (id_retourne_par=user)
-    retrieve      : same visibility as list
-    update (PATCH): IsGestionnaireOrAdmin
-                    Sets id_traite_par automatically when decision is provided
+    list/retrieve : IsGestionnaireOrAdmin → all; IsChefService → own
+    partial_update: IsGestionnaireOrAdmin
     destroy       : IsGestionnaireOrAdmin
+    receptionner  : IsGestionnaireOrAdmin
     """
 
     serializer_class = RetourMaterielSerializer
@@ -30,16 +36,15 @@ class RetourMaterielViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == "create":
             return [(IsChefService | IsGestionnaireOrAdmin)()]
-        if self.action in ("partial_update", "destroy"):
+        if self.action in ("partial_update", "destroy", "receptionner"):
             return [IsGestionnaireOrAdmin()]
-        # list + retrieve
         return [(IsGestionnaireOrAdmin | IsChefService)()]
 
     def get_queryset(self):
         qs = RetourMateriel.objects.select_related(
             "id_ressource",
             "id_instance_ressource",
-            "id_retourne_par",
+            "id_retourne_par__id_service",
             "id_traite_par",
         )
         user = self.request.user
@@ -52,27 +57,84 @@ class RetourMaterielViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        from apps.alerts.models import NotificationType  # noqa: PLC0415
+        from apps.alerts.notification_service import create_notification  # noqa: PLC0415
+        from apps.users.models import Utilisateur  # noqa: PLC0415
+
         user = self.request.user
-        # Chefs always own the return; gestionnaires may specify id_retourne_par
-        # via the request body, but if omitted it defaults to the submitter.
         if user.id_role and user.id_role.nom_role == "chef_service":
-            serializer.save(id_retourne_par=user, decision="")
+            retour = serializer.save(id_retourne_par=user, decision="")
         else:
-            # Gestionnaire: inject traite_par when decision is provided at creation
             kwargs = {}
             decision = serializer.validated_data.get("decision", "")
             if decision:
                 kwargs["id_traite_par"] = user
             if not serializer.validated_data.get("id_retourne_par"):
                 kwargs["id_retourne_par"] = user
-            serializer.save(**kwargs)
+            retour = serializer.save(**kwargs)
+
+        try:
+            designation = retour.id_ressource.designation if retour.id_ressource else "matériel"
+            retourne_par = retour.id_retourne_par
+            nom = retourne_par.nom_complet if retourne_par else "Un utilisateur"
+            gestionnaires = Utilisateur.objects.filter(
+                id_role__nom_role="gestionnaire_magasin", actif=True
+            ).only("id_utilisateur")
+            for gestionnaire in gestionnaires:
+                create_notification(
+                    gestionnaire,
+                    NotificationType.RETOUR_ENREGISTRE,
+                    f"{nom} a enregistré un retour de '{designation}'.",
+                    objet_id=retour.pk,
+                    lien=f"/gestionnaire/retours/{retour.pk}/",
+                )
+        except Exception:
+            pass
 
     def perform_update(self, serializer):
-        # Inject id_traite_par whenever a decision is being set
         decision = serializer.validated_data.get("decision", "")
         if decision:
             serializer.save(id_traite_par=self.request.user)
         else:
             serializer.save()
-        # The returns signal (on_retour_decision) fires via post_save and
-        # handles InstanceRessource.etat + MouvementStock updates automatically.
+
+    @action(detail=True, methods=["post"], url_path="receptionner")
+    def receptionner(self, request, pk=None):
+        retour = self.get_object()
+
+        if retour.statut != "en_attente":
+            return Response(
+                {"detail": "Ce retour est déjà traité."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if retour.motif_retour not in _MOTIF_ETAT:
+            return Response(
+                {"detail": f"Motif '{retour.motif_retour}' non géré par cette action."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        nouvel_etat, nouveau_statut = _MOTIF_ETAT[retour.motif_retour]
+
+        if retour.id_instance_ressource:
+            InstanceRessource.objects.filter(
+                pk=retour.id_instance_ressource_id
+            ).update(etat=nouvel_etat, statut=nouveau_statut)
+
+            MouvementStock.objects.create(
+                type_mouvement="retour",
+                quantite=1,
+                id_ressource=retour.id_ressource,
+                id_instance_ressource=retour.id_instance_ressource,
+                id_utilisateur=request.user,
+            )
+
+        retour.statut = "receptionne"
+        retour.date_reception = now()
+        retour.id_traite_par = request.user
+        retour.save(update_fields=["statut", "date_reception", "id_traite_par_id"])
+
+        return Response(
+            {"detail": "Retour réceptionné.", "nouvel_etat": nouvel_etat},
+            status=status.HTTP_200_OK,
+        )

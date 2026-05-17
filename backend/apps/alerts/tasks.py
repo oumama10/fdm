@@ -2,14 +2,12 @@ from datetime import date
 
 from celery import shared_task
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
-from django.db import transaction
 from django.template.loader import render_to_string
-from django.utils import timezone
 
 from apps.alerts.email_utils import send_alert_email
-from apps.alerts.models import AlerteDelai, Notification
+from apps.alerts.models import AlerteDelai, Notification, NotificationType
+from apps.alerts.notification_service import create_notification
 from apps.core.celery import app
 from apps.procurement.models import MarcheBC
 from apps.users.models import Utilisateur
@@ -47,12 +45,12 @@ def check_marche_deadlines():
                 **alerte_kwargs
             )
             for user in gestionnaires:
-                Notification.objects.get_or_create(
-                    type_notification="alerte_delai",
-                    titre=f"Alerte délai — {marche.reference}",
-                    message=f"Le marché {marche.reference} approche de sa date limite de livraison.",
-                    id_destinataire=user,
-                    canal="web",
+                create_notification(
+                    user,
+                    NotificationType.ALERTE_STOCK,
+                    f"Le marché {marche.reference} approche de sa date limite de livraison.",
+                    objet_id=marche.pk,
+                    lien=f"/gestionnaire/marches/{marche.pk}",
                 )
         elif jours_restants < 0:
             alerte, created = AlerteDelai.objects.get_or_create(
@@ -69,12 +67,12 @@ def check_marche_deadlines():
 @app.task(queue="alerts")
 def send_notification_email(notification_id: int):
     try:
-        notif = Notification.objects.get(pk=notification_id, canal="email")
+        notif = Notification.objects.get(pk=notification_id)
     except Notification.DoesNotExist:
         return
-    subject = notif.titre
+    subject = "Notification FMPDF"
     message = notif.message
-    recipient = notif.id_destinataire.email
+    recipient = notif.destinataire.email
     html_message = render_to_string("emails/alerte_delai.html", {"notification": notif})
     send_mail(
         subject,
@@ -84,5 +82,4 @@ def send_notification_email(notification_id: int):
         html_message=html_message,
     )
     notif.lu = True
-    notif.date_lecture = timezone.now()
-    notif.save()
+    notif.save(update_fields=["lu"])

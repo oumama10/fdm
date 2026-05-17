@@ -8,4 +8,4 @@ class AlertsConfig(AppConfig):
     verbose_name = "Alertes"
 
     def ready(self):
-        pass
+        import apps.alerts.signals  # noqa: F401, PLC0415

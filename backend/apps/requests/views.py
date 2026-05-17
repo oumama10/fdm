@@ -41,7 +41,7 @@ class DemandeViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == "create":
             return [IsChefService()]
-        if self.action in ("update", "partial_update", "destroy", "valider", "refuser"):
+        if self.action in ("update", "partial_update", "destroy", "valider"):
             return [IsGestionnaireOrAdmin()]
         # list + retrieve: both roles allowed — queryset/object gate narrows access
         return [(IsGestionnaireOrAdmin | IsChefService)()]
@@ -83,30 +83,51 @@ class DemandeViewSet(viewsets.ModelViewSet):
         return obj
 
     def perform_create(self, serializer):
-        serializer.save(id_chef_demandeur=self.request.user)
+        from apps.alerts.models import NotificationType  # noqa: PLC0415
+
+        demande = serializer.save(id_chef_demandeur=self.request.user, type_demandeur="chef_service")
+        self._notify_gestionnaires(
+            demande,
+            NotificationType.DEMANDE_SOUMISE,
+            f"Nouvelle demande #{demande.id_demande} soumise par {self.request.user.nom_complet}.",
+        )
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _notify_chef(demande: Demande, titre: str, message: str) -> None:
-        """
-        Send a web Notification to the chef who submitted the demande.
-        Silently swallows all exceptions — notifications must not block the
-        main action.
-        """
+    def _notify_chef(demande: Demande, notification_type, message: str) -> None:
+        """Notify the chef who submitted the demande. Swallows all exceptions."""
         try:
-            from apps.alerts.models import Notification  # noqa: PLC0415
-            from django.contrib.contenttypes.models import ContentType  # noqa: PLC0415
+            from apps.alerts.notification_service import create_notification  # noqa: PLC0415
 
-            Notification.objects.create(
-                id_destinataire=demande.id_chef_demandeur,
-                type_notification="validation_requise",
-                titre=titre,
-                message=message,
-                canal="web",
-                content_type=ContentType.objects.get_for_model(Demande),
-                object_id=demande.pk,
+            create_notification(
+                demande.id_chef_demandeur,
+                notification_type,
+                message,
+                objet_id=demande.pk,
+                lien=f"/chef/demandes/{demande.pk}/",
             )
+        except Exception:
+            pass
+
+    @staticmethod
+    def _notify_gestionnaires(demande: Demande, notification_type, message: str) -> None:
+        """Notify all active gestionnaires. Swallows all exceptions."""
+        try:
+            from apps.alerts.notification_service import create_notification  # noqa: PLC0415
+            from apps.users.models import Utilisateur  # noqa: PLC0415
+
+            gestionnaires = Utilisateur.objects.filter(
+                id_role__nom_role="gestionnaire_magasin", actif=True
+            ).only("id_utilisateur")
+            for gestionnaire in gestionnaires:
+                create_notification(
+                    gestionnaire,
+                    notification_type,
+                    message,
+                    objet_id=demande.pk,
+                    lien=f"/gestionnaire/demandes/{demande.pk}/",
+                )
         except Exception:
             pass
 
@@ -114,50 +135,268 @@ class DemandeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="valider")
     def valider(self, request, pk=None):
+        from django.db import transaction  # noqa: PLC0415
+
+        from apps.decharge.models import Decharge, LigneDecharge, SignatureDecharge  # noqa: PLC0415
+
+        from .models import LigneDemande  # noqa: PLC0415
+
         demande = self.get_object()
 
-        if demande.statut not in ("en_cours",):
+        # Guard 1: only process actionable statuts
+        if demande.statut not in ("en_attente", "refusee"):
             return Response(
-                {"detail": f"Impossible de valider une demande au statut '{demande.statut}'."},
+                {"detail": f"Impossible de traiter une demande au statut « {demande.statut} »."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        demande.statut = "validee"
-        demande.id_valide_par = request.user
-        demande.date_validation = timezone.now()
-        demande.save(update_fields=["statut", "id_valide_par_id", "date_validation"])
-
-        self._notify_chef(
-            demande,
-            titre="Demande validée",
-            message=f"Votre demande #{demande.id_demande} a été validée.",
-        )
-
-        return Response(DemandeSerializer(demande).data, status=status.HTTP_200_OK)
-
-    @action(detail=True, methods=["post"], url_path="refuser")
-    def refuser(self, request, pk=None):
-        demande = self.get_object()
-
-        if demande.statut not in ("en_cours",):
+        # Guard 2: idempotency — block double-click
+        if Decharge.objects.filter(id_demande=demande).exists():
             return Response(
-                {"detail": f"Impossible de refuser une demande au statut '{demande.statut}'."},
+                {"detail": "Cette demande a déjà une décharge associée."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        commentaire = request.data.get("commentaire_validation", "")
+        decision = request.data.get("decision", "")
+        if decision not in ("total", "partiel", "refus"):
+            return Response(
+                {"detail": "Le champ 'decision' est requis : 'total', 'partiel' ou 'refus'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        demande.statut = "refusee"
-        demande.commentaire_validation = commentaire
-        demande.save(update_fields=["statut", "commentaire_validation"])
+        # ── CAS REFUS ────────────────────────────────────────────────────────
+        if decision == "refus":
+            commentaire = request.data.get("commentaire_validation", "")
+            motif_refus = request.data.get("motif_refus", commentaire)
 
-        self._notify_chef(
-            demande,
-            titre="Demande refusée",
-            message=(
-                f"Votre demande #{demande.id_demande} a été refusée. "
-                + (f"Motif : {commentaire}" if commentaire else "")
-            ),
+            demande.statut = "refusee"
+            demande.commentaire_validation = commentaire
+            demande.motif_refus = motif_refus
+            demande.id_valide_par = request.user
+            demande.date_validation = timezone.now()
+            demande.save(
+                update_fields=["statut", "commentaire_validation", "motif_refus", "id_valide_par_id", "date_validation"]
+            )
+
+            from apps.alerts.models import NotificationType  # noqa: PLC0415
+
+            self._notify_chef(
+                demande,
+                NotificationType.DEMANDE_REJETEE,
+                f"Votre demande #{demande.id_demande} a été refusée."
+                + (f" Motif : {commentaire}" if commentaire else ""),
+            )
+
+            return Response(DemandeSerializer(demande).data, status=status.HTTP_200_OK)
+
+        # ── CAS TOTAL / PARTIEL ──────────────────────────────────────────────
+        lignes_input = request.data.get("lignes", [])
+
+        any_accorded = any(
+            max(0, int(ld.get("quantite_accordee", 0))) > 0
+            for ld in lignes_input
+        )
+        if not any_accorded:
+            return Response(
+                {"detail": "Aucune quantité accordée. Pour refuser la demande, utilisez decision='refus'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Pre-check stock availability for consommables (before entering the transaction)
+        from apps.resources.models import Stock as _Stock  # noqa: PLC0415
+        for ld_data in lignes_input:
+            qa = max(0, int(ld_data.get("quantite_accordee", 0)))
+            if qa <= 0:
+                continue
+            lid = ld_data.get("id_ligne")
+            try:
+                from .models import LigneDemande as _LD  # noqa: PLC0415
+                ligne_check = _LD.objects.select_related("id_ressource__id_categorie").get(pk=lid, id_demande=demande)
+                if ligne_check.id_ressource.is_consommable:
+                    stock_check = _Stock.objects.filter(id_ressource=ligne_check.id_ressource).first()
+                    available = stock_check.quantite_disponible if stock_check else 0
+                    if available < qa:
+                        return Response(
+                            {
+                                "detail": (
+                                    f"Stock insuffisant pour « {ligne_check.id_ressource.designation} » : "
+                                    f"{available} disponible(s), {qa} demandé(s)."
+                                )
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+            except LigneDemande.DoesNotExist:
+                pass  # caught properly inside the transaction below
+
+        with transaction.atomic():
+
+            # Step 1 — persist accorded quantities on each ligne
+            lignes_map = {}
+            for ld_data in lignes_input:
+                lid = ld_data.get("id_ligne")
+                qa = max(0, int(ld_data.get("quantite_accordee", 0)))
+                instances = ld_data.get("instances", [])
+                try:
+                    ligne = LigneDemande.objects.select_related(
+                        "id_ressource__id_categorie"
+                    ).get(pk=lid, id_demande=demande)
+                    ligne.quantite_accordee = qa
+                    ligne.save(update_fields=["quantite_accordee"])
+                    lignes_map[lid] = {"ligne": ligne, "instances": instances, "qa": qa}
+                except LigneDemande.DoesNotExist:
+                    return Response(
+                        {"detail": f"Ligne {lid} introuvable pour cette demande."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            # Step 2 — set statut from the explicit decision
+            new_statut = "totale" if decision == "total" else "partielle"
+
+            demande.statut = new_statut
+            demande.id_valide_par = request.user
+            demande.date_validation = timezone.now()
+            demande.save(update_fields=["statut", "id_valide_par_id", "date_validation"])
+
+            # Step 3 — create the Décharge
+            decharge = Decharge.objects.create(
+                id_demande=demande,
+                id_genere_par=request.user,
+            )
+
+            # Step 4 — build décharge lines
+            decharge_lignes = []
+            for ld_info in lignes_map.values():
+                ligne = ld_info["ligne"]
+                ressource = ligne.id_ressource
+                qa = ld_info["qa"]
+                inst_ids = ld_info["instances"]
+
+                if ressource.is_consommable:
+                    if qa > 0:
+                        decharge_lignes.append(
+                            LigneDecharge(
+                                id_decharge=decharge,
+                                id_ressource=ressource,
+                                quantite=qa,
+                                type_ligne="consommable",
+                                id_instance_ressource=None,
+                            )
+                        )
+                else:
+                    for inst_id in inst_ids:
+                        decharge_lignes.append(
+                            LigneDecharge(
+                                id_decharge=decharge,
+                                id_ressource=ressource,
+                                quantite=1,
+                                type_ligne="bien_inventaire",
+                                id_instance_ressource_id=inst_id,
+                            )
+                        )
+
+            if not decharge_lignes:
+                decharge.delete()
+                return Response(
+                    {"detail": "Aucune instance sélectionnée pour les biens d'inventaire."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            LigneDecharge.objects.bulk_create(decharge_lignes)
+
+            # Step 5 — decrement stock at validation time (Option A)
+            from django.contrib.contenttypes.models import ContentType  # noqa: PLC0415
+            from django.db.models import F                              # noqa: PLC0415
+            from django.utils.timezone import now as _now              # noqa: PLC0415
+            from apps.resources.models import InstanceRessource, MouvementStock, Stock  # noqa: PLC0415
+            from apps.resources.signals import _notify_gestionnaires_for_stock  # noqa: PLC0415
+
+            ligne_ct = ContentType.objects.get_for_model(LigneDecharge)
+
+            for dl in decharge_lignes:
+                if dl.type_ligne == "consommable" and dl.quantite > 0:
+                    # Decrement disponible AND increment reservee atomically.
+                    # disponible tracks real physical stock; reservee tracks what
+                    # is engaged but not yet physically delivered (released at signature).
+                    Stock.objects.filter(id_ressource=dl.id_ressource).update(
+                        quantite_disponible=F("quantite_disponible") - dl.quantite,
+                        quantite_reservee=F("quantite_reservee") + dl.quantite,
+                    )
+                    stock = Stock.objects.filter(id_ressource=dl.id_ressource).first()
+                    if stock:
+                        _notify_gestionnaires_for_stock(stock.pk)
+                    MouvementStock.objects.create(
+                        type_mouvement="sortie",
+                        quantite=dl.quantite,
+                        id_ressource=dl.id_ressource,
+                        content_type=ligne_ct,
+                        object_id=dl.pk,
+                    )
+
+                elif dl.type_ligne == "bien_inventaire" and dl.id_instance_ressource_id:
+                    InstanceRessource.objects.filter(
+                        pk=dl.id_instance_ressource_id
+                    ).update(
+                        statut="en_service",
+                        id_service_actuel=demande.id_service,
+                        date_derniere_affectation=_now().date(),
+                    )
+                    MouvementStock.objects.create(
+                        type_mouvement="sortie",
+                        quantite=1,
+                        id_ressource=dl.id_ressource,
+                        content_type=ligne_ct,
+                        object_id=dl.pk,
+                    )
+
+            SignatureDecharge.objects.create(
+                id_decharge=decharge,
+                id_chef_service=demande.id_chef_demandeur,
+                statut="non_signe",
+            )
+
+            try:
+                from apps.decharge.tasks import generate_decharge_pdf  # noqa: PLC0415
+                generate_decharge_pdf.delay(decharge.pk)
+            except Exception:
+                pass
+
+        # Notification (outside the atomic block)
+        try:
+            from apps.alerts.models import NotificationType  # noqa: PLC0415
+            from apps.alerts.notification_service import create_notification  # noqa: PLC0415
+
+            create_notification(
+                demande.id_chef_demandeur,
+                NotificationType.DECHARGE_GENEREE,
+                f"Votre demande #{demande.id_demande} a été traitée ({new_statut}) — "
+                f"décharge {decharge.numero_decharge} générée.",
+                objet_id=decharge.pk,
+                lien=f"/chef/decharges/{decharge.pk}/",
+            )
+        except Exception:
+            pass
+
+        response_data = dict(DemandeSerializer(demande).data)
+        response_data["decharge_id"] = decharge.pk
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="requester-options")
+    def requester_options(self, request):
+        from apps.users.models import Utilisateur  # noqa: PLC0415
+
+        chefs = (
+            Utilisateur.objects.select_related("id_service", "id_role")
+            .filter(id_role__nom_role="chef_service", actif=True)
+            .order_by("nom_complet")
         )
 
-        return Response(DemandeSerializer(demande).data, status=status.HTTP_200_OK)
+        data = [
+            {
+                "id_utilisateur": chef.id_utilisateur,
+                "nom_complet": chef.nom_complet,
+                "id_service": chef.id_service_id,
+                "nom_service": chef.id_service.nom_service if chef.id_service else None,
+            }
+            for chef in chefs
+        ]
+        return Response(data, status=status.HTTP_200_OK)

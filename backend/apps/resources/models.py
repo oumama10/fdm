@@ -28,6 +28,13 @@ class SousCategorie(models.Model):
     nom_sous_categorie = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     id_categorie = models.ForeignKey(Categorie, on_delete=models.CASCADE)
+    id_parent_sous_categorie = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="children",
+    )
 
     class Meta:
         verbose_name = "sous-categorie"
@@ -42,6 +49,7 @@ class Ressource(models.Model):
     designation = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     unite_mesure = models.CharField(max_length=20, default="unité")
+    seuil_alerte = models.IntegerField(null=True, blank=True, default=None)
     id_categorie = models.ForeignKey(Categorie, on_delete=models.CASCADE)
     id_sous_categorie = models.ForeignKey(
         SousCategorie,
@@ -67,13 +75,22 @@ class Ressource(models.Model):
     def is_bien_inventaire(self):
         return not self.is_consommable
 
+    @property
+    def est_en_alerte(self):
+        if self.seuil_alerte is None:
+            return False
+        count = getattr(self, "instances_en_stock", None)
+        if count is None:
+            count = self.instanceressource_set.filter(statut="en_stock").count()
+        return count <= self.seuil_alerte
+
 
 class Stock(models.Model):
     id_stock = models.AutoField(primary_key=True)
     id_ressource = models.OneToOneField(Ressource, on_delete=models.CASCADE)
     quantite_disponible = models.IntegerField(default=0)
     quantite_reservee = models.IntegerField(default=0)
-    seuil_alerte = models.IntegerField(default=5)
+    seuil_alerte = models.IntegerField(null=True, blank=True, default=None)
     date_mise_a_jour = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -85,7 +102,14 @@ class Stock(models.Model):
 
     @property
     def quantite_reelle(self):
+        """Quantité réellement disponible pour de nouvelles demandes."""
         return self.quantite_disponible - self.quantite_reservee
+
+    @property
+    def est_en_alerte(self):
+        if self.seuil_alerte is None:
+            return False
+        return self.quantite_disponible <= self.seuil_alerte
 
     def clean(self):
         super().clean()
@@ -106,13 +130,18 @@ class InstanceRessource(models.Model):
     ETAT_CHOICES = [
         ("neuf", "neuf"),
         ("bon_etat", "bon_etat"),
-        ("usage_normal", "usage_normal"),
         ("endommage", "endommage"),
         ("hors_service", "hors_service"),
+        ("retourne", "retourne"),
     ]
 
     id_instance = models.AutoField(primary_key=True)
-    numero_inventaire = models.CharField(max_length=50, unique=True)
+    numero_inventaire = models.CharField(
+        max_length=50,
+        unique=True,
+        blank=True,
+        help_text="Auto-generated in format INV-{YYYY}-{XXXX} if omitted",
+    )
     date_acquisition = models.DateField(null=True, blank=True)
     valeur_acquisition = models.DecimalField(
         max_digits=10,
@@ -120,8 +149,8 @@ class InstanceRessource(models.Model):
         null=True,
         blank=True,
     )
-    statut = models.CharField(max_length=50, choices=STATUT_CHOICES, default="en_stock")
-    etat = models.CharField(max_length=50, choices=ETAT_CHOICES, default="neuf")
+    statut = models.CharField(max_length=50, choices=STATUT_CHOICES, default="en_stock", db_index=True)
+    etat = models.CharField(max_length=50, choices=ETAT_CHOICES, default="neuf", db_index=True)
     localisation_actuelle = models.CharField(max_length=200, blank=True)
     date_derniere_affectation = models.DateField(null=True, blank=True)
     observation = models.TextField(blank=True)

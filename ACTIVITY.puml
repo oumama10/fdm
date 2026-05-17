@@ -1,0 +1,307 @@
+@startuml ACTIVITY_WF1
+title FMPDF — WF1 : Import PDF/Excel → Validation → Stock
+
+skinparam activity {
+  BackgroundColor #F0F9FF
+  BorderColor     #2563EB
+  ArrowColor      #1E40AF
+  DiamondBackgroundColor #FEF9C3
+  DiamondBorderColor     #D97706
+}
+skinparam swimlane {
+  BorderColor #94A3B8
+  TitleBackgroundColor #E2E8F0
+}
+
+|Gestionnaire Magasin|
+start
+:Uploader un fichier PDF / Excel\n(POST /procurement/import/direct/);
+note right
+  file_type = "pdf" ou "xlsx"
+  source_type = bc | marche | donation
+end note
+
+|Systeme (Celery)|
+:Creer ImportExcelBC (statut = "brouillon");
+:Declencher tache OCR / extraction;
+:Extraire les articles -> creer StagingItems\n(statut = "en_attente");
+:Mettre a jour statut import -> "en_attente";
+
+|Gestionnaire Magasin|
+:Consulter les imports a reviser\n(GET /procurement/import/?scope=extraites);
+:Ouvrir l'import et reviser chaque article;
+
+repeat
+  :Examiner un article staging;
+  if (Article correct sans modification ?) then (Oui)
+    :Approuver l article directement\n(POST /procurement/staging/{id}/approve/);
+    :statut staging -> "approuve";
+  elseif (Article necessite correction ?) then (Oui)
+    :Modifier la designation / type_detecte\ncategorie / sous-categorie / quantite / prix\n(PATCH /procurement/staging/{id}/);
+    :statut staging -> "modifie";
+    :Approuver l article corrige\n(POST /procurement/staging/{id}/approve/);
+    :statut staging -> "approuve";
+  else (Non recuperable)
+    :Rejeter l article\n(POST /procurement/staging/{id}/reject/);
+    :statut staging -> "rejete";
+  endif
+repeat while (Il reste des articles en attente ?) is (Oui) not (Non)
+
+|Systeme (Signal post_save)|
+:Signal on_staging_approuve declenche;
+if (Ressource existe deja ?) then (Oui)
+  :Recuperer la ressource existante;
+else (Non)
+  :Creer la ressource (Ressource.objects.create);
+endif
+
+if (Ressource est consommable ?) then (Oui)
+  :Mettre a jour Stock\n(quantite_disponible += quantite);
+  :Creer MouvementStock (type=entree);
+else (Bien Inventaire)
+  :Creer instances InstanceRessource\n(statut=en_stock, numero=INV-YYYY-N);
+  :Creer MouvementStock (type=entree);
+endif
+
+:_check_import_complete();
+if (Tous les articles traites ?) then (Oui)
+  if (Au moins un approuve ?) then (Oui)
+    :statut import -> "valide";
+    :_sync_marche_reference();
+    :statut MarcheBC -> "receptionne_et_stocke";
+    :_complete_reception_etapes() — 4 etapes -> complete;
+  else (Tous rejetes)
+    :statut import -> "rejete";
+  endif
+endif
+
+|Gestionnaire Magasin|
+:Consulter le stock mis a jour;
+stop
+
+@enduml
+
+' ══════════════════════════════════════════════════════════════════
+
+@startuml ACTIVITY_WF2
+title FMPDF — WF2 : Demande → Validation → Decharge → Signature
+
+skinparam activity {
+  BackgroundColor #F0F9FF
+  BorderColor     #2563EB
+  ArrowColor      #1E40AF
+  DiamondBackgroundColor #FEF9C3
+  DiamondBorderColor     #D97706
+}
+skinparam swimlane {
+  BorderColor #94A3B8
+  TitleBackgroundColor #E2E8F0
+}
+
+|Chef de Service|
+start
+:Creer une demande\n(POST /api/requests/demandes/);
+note right
+  urgence: normal | moyen | urgent
+  lignes: id_ressource + quantite_demandee
+  statut -> "en_attente"
+end note
+:Attendre la decision du gestionnaire;
+
+|Systeme|
+:Notifier le gestionnaire (DEMANDE_SOUMISE);
+
+|Gestionnaire Magasin|
+:Consulter les demandes en attente\n(GET /api/requests/demandes/);
+:Verifier la disponibilite en stock;
+:Renseigner quantite_accordee par ligne;
+:Prendre une decision\n(POST /api/requests/demandes/{id}/valider/);
+note right
+  decision = "total" | "partiel" | "refus"
+end note
+
+if (Decision = refus ?) then (Oui)
+  :statut Demande -> "refusee";
+  :motif_refus renseigne;
+  :Notifier le chef de service (DEMANDE_REJETEE);
+  |Chef de Service|
+  :Recevoir notification de refus;
+  stop
+elseif (Decision = total ?) then (Oui)
+  :quantite_accordee = quantite_demandee par ligne;
+  :statut Demande -> "totale";
+else (Decision = partiel)
+  :quantite_accordee < quantite_demandee sur au moins une ligne;
+  :statut Demande -> "partielle";
+endif
+
+|Systeme|
+:Decharge creee automatiquement dans valider()\n(Decharge + LigneDecharge);
+note right
+  Consommable -> LigneDecharge quantite=qa
+  Bien Inventaire -> LigneDecharge par instance
+  SignatureDecharge creee (statut=non_signe)
+end note
+:PDF de decharge genere (tache generate_decharge_pdf);
+:Notifier le chef de service (DECHARGE_GENEREE);
+
+|Chef de Service|
+:Recevoir notification DECHARGE_GENEREE;
+:Telecharger le PDF decharge\n(GET /api/decharge/decharges/{id}/pdf/);
+:Signer physiquement le document papier;
+note right
+  Aucune action dans le systeme a cette etape.
+  La signature se fait sur le document papier.
+end note
+
+|Gestionnaire Magasin|
+:Recevoir le document physique signe;
+:Verifier la signature physique;
+:Confirmer la signature dans le systeme\n(POST /decharges/{id}/signature/confirmer/);
+note right
+  statut signature : non_signe -> signe
+  date_signature = now()
+end note
+
+|Systeme|
+:Signal on_signature_valide declenche;
+:quantite_livree = quantite_accordee par LigneDemande;
+:Mettre a jour progression Demande (totale ou partielle);
+:Creer MouvementStock (type=sortie);
+:Notifier chef de service (DECHARGE_SIGNEE);
+
+|Chef de Service|
+:Recevoir notification confirmation signature;
+stop
+
+@enduml
+
+' ══════════════════════════════════════════════════════════════════
+
+@startuml ACTIVITY_WF3
+title FMPDF — WF3 : Retour de Materiel
+
+skinparam activity {
+  BackgroundColor #F0F9FF
+  BorderColor     #2563EB
+  ArrowColor      #1E40AF
+  DiamondBackgroundColor #FEF9C3
+  DiamondBorderColor     #D97706
+}
+skinparam swimlane {
+  BorderColor #94A3B8
+  TitleBackgroundColor #E2E8F0
+}
+
+|Chef de Service|
+start
+:Identifier le materiel a retourner;
+:Creer le retour\n(POST /api/returns/retours/);
+note right
+  motif_retour: panne | inutilise
+  id_ressource + id_instance_ressource
+  statut -> "en_attente"
+end note
+
+|Systeme|
+:Notifier le gestionnaire (RETOUR_ENREGISTRE);
+
+|Gestionnaire Magasin|
+:Consulter les retours en attente\n(GET /api/returns/retours/);
+:Inspecter physiquement le materiel;
+:Receptionner le retour (PATCH statut -> "receptionne");
+:date_reception = now();
+
+:Lire le motif du retour;
+if (Motif = panne ?) then (Oui)
+  :InstanceRessource.statut -> hors_service;
+  :InstanceRessource.etat -> hors_service;
+  :service_affecte -> null;
+  note right
+    Materiel hors service definitif
+    ou en attente de reparation externe
+  end note
+else (Motif = inutilise)
+  :InstanceRessource.statut -> retourne;
+  :service_affecte -> null;
+  note right
+    Visible dans l inventaire comme "Retourne".
+    Le gestionnaire peut manuellement
+    le passer en "en_stock" apres inspection.
+  end note
+endif
+
+:Appliquer la decision\n(PATCH /api/returns/retours/{id}/);
+:Renseigner justification_decision;
+stop
+
+@enduml
+
+' ══════════════════════════════════════════════════════════════════
+
+@startuml ACTIVITY_WF4
+title FMPDF — WF4 : Creation Marche Manuel → Confirmation Reception
+
+skinparam activity {
+  BackgroundColor #F0F9FF
+  BorderColor     #2563EB
+  ArrowColor      #1E40AF
+  DiamondBackgroundColor #FEF9C3
+  DiamondBorderColor     #D97706
+}
+skinparam swimlane {
+  BorderColor #94A3B8
+  TitleBackgroundColor #E2E8F0
+}
+
+|Gestionnaire Magasin|
+start
+:Remplir le formulaire (POST /procurement/marches/)\navec tous les articles;
+note right
+  type_acquisition: marche | bon_commande | donation
+  source = "manuel"
+  Choisir statut a la creation
+end note
+
+:Choisir le statut a la creation;
+
+if (Statut = Receptionne et stocke ?) then (Oui)
+  |Systeme|
+  :Articles integres au stock immediatement\n(_find_or_create_ressource + _integrate_item);
+  :statut MarcheBC -> "receptionne_et_stocke";
+  :date_reception = now();
+  :Creer MouvementStock (type=entree) par article;
+  :MarcheBC visible dans Marches / BC / Dons;
+
+  |Gestionnaire Magasin|
+  :Consulter le stock mis a jour\n(GET /api/resources/stocks/);
+  stop
+
+else (Statut = En attente de livraison)
+  |Systeme|
+  :MarcheBC cree statut = "en_attente_livraison";
+  :Articles enregistres mais PAS dans le stock;
+  :Calculer delai_reception_jours\n(90j marche / 40j BC / 0j don);
+  :Calculer date_livraison_prevue;
+  :Creer les MarcheEtapes par defaut\n(marche_cree -> complete, reste en_attente);
+  :Creer AlerteDelai si delai proche (tache periodique);
+
+  |Gestionnaire Magasin|
+  :MarcheBC visible avec bouton "Confirmer reception";
+  :Attendre la livraison physique;
+  :Verifier les articles livres vs commande;
+  :Cliquer "Confirmer reception"\n(POST /procurement/marches/{id}/confirmer-reception/);
+
+  |Systeme|
+  :statut MarcheBC -> "receptionne_et_stocke";
+  :date_reception = now();
+  :Integrer articles au stock :\n  consommable -> quantite_disponible += quantite\n  bien inventaire -> creer instances en_stock;
+  :Creer MouvementStock (type=entree) par ressource;
+  :MarcheEtapes -> complete :\n  en_attente_livraison, livraison_en_cours,\n  receptionne_magasin, controle_qualite;
+
+  |Gestionnaire Magasin|
+  :Consulter le stock mis a jour\n(GET /api/resources/stocks/);
+  stop
+endif
+
+@enduml

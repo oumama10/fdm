@@ -1,0 +1,459 @@
+@startuml CLASSES_FMPDF
+title FMPDF — Diagramme de Classes (par application)
+
+skinparam classAttributeIconSize 0
+skinparam class {
+  BackgroundColor #F8FAFC
+  BorderColor     #2563EB
+  ArrowColor      #1E40AF
+  HeaderBackgroundColor #DBEAFE
+}
+skinparam package {
+  BackgroundColor #F0F9FF
+  BorderColor     #93C5FD
+}
+skinparam linetype ortho
+skinparam nodesep 50
+skinparam ranksep 70
+hide empty methods
+
+' ══════════════════════════════════════════════════════════════════
+' APP : users
+' ══════════════════════════════════════════════════════════════════
+package "users" #EFF6FF {
+
+  class Role {
+    + id_role : AutoField <<PK>>
+    + nom_role : CharField(100)\n  [service_financiere | gestionnaire_magasin\n   | chef_service | admin | fournisseur]
+    + description : TextField
+    --
+    + __str__() : str
+  }
+
+  class Permission {
+    + id_permission : AutoField <<PK>>
+    + module : CharField(100)
+    + action : CharField(100)
+    + description : TextField
+    --
+    unique_together: (module, action)
+    + __str__() : str
+  }
+
+  class RolePermission {
+    + id_role_permission : AutoField <<PK>>
+    + accorde : BooleanField = True
+    --
+    unique_together: (id_role, id_permission)
+    + __str__() : str
+  }
+
+  class Service {
+    + id_service : AutoField <<PK>>
+    + nom_service : CharField(200)
+    + type_service : CharField(100)\n  [administratif | chu | decanat\n   | pharmacie | dentaire | labo | association]
+    + description : TextField
+    + lettre_nomination_chef : FileField
+    --
+    + __str__() : str
+  }
+
+  class Utilisateur {
+    + id_utilisateur : AutoField <<PK>>
+    + nom_complet : CharField(200)
+    + email : EmailField <<unique>>
+    + actif : BooleanField = True
+    + is_staff : BooleanField = False
+    + titre_poste : CharField(100)
+    + date_creation : DateTimeField <<auto>>
+    --
+    {field} # is_active : bool <<property>>
+    {field} # is_gestionnaire : bool <<property>>
+    {field} # is_chef_service : bool <<property>>
+    {field} # is_financiere : bool <<property>>
+    {field} # is_fournisseur : bool <<property>>
+    {field} # is_admin : bool <<property>>
+    --
+    + __str__() : str
+    + _has_role(role_name) : bool
+  }
+
+  class Fournisseur {
+    + id_fournisseur : AutoField <<PK>>
+    + nom_societe : CharField(255)
+    + nom_responsable : CharField(200)
+    + email : EmailField
+    + telephone : CharField(20)
+    + adresse : TextField
+    + evaluation : DecimalField(3,2)
+    --
+    + __str__() : str
+  }
+
+  Role          "1" <--o "0..*" RolePermission : id_role
+  Permission    "1" <--o "0..*" RolePermission : id_permission
+  Role          "0..1" <--o "0..*" Utilisateur  : id_role
+  Service       "0..1" <--o "0..*" Utilisateur  : id_service
+  Utilisateur   "0..1" <--|| Fournisseur         : id_utilisateur (O2O)
+}
+
+' ══════════════════════════════════════════════════════════════════
+' APP : resources
+' ══════════════════════════════════════════════════════════════════
+package "resources" #F0FFF4 {
+
+  class Categorie {
+    + id_categorie : AutoField <<PK>>
+    + nom_categorie : CharField(200)\n  [Consommable | Bien Inventaire]
+    + description : TextField
+    + actif : BooleanField = True
+    --
+    + __str__() : str
+  }
+
+  class SousCategorie {
+    + id_sous_categorie : AutoField <<PK>>
+    + nom_sous_categorie : CharField(200)
+    + description : TextField
+    --
+    + __str__() : str
+  }
+
+  class Ressource {
+    + id_ressource : AutoField <<PK>>
+    + designation : CharField(255)
+    + description : TextField
+    + unite_mesure : CharField(20) = "unité"
+    + seuil_alerte : IntegerField <<null>>
+    --
+    {field} # is_consommable : bool <<property>>
+    {field} # is_bien_inventaire : bool <<property>>
+    {field} # est_en_alerte : bool <<property>>
+    --
+    + __str__() : str
+  }
+
+  class Stock {
+    + id_stock : AutoField <<PK>>
+    + quantite_disponible : IntegerField = 0
+    + quantite_reservee : IntegerField = 0
+    + seuil_alerte : IntegerField <<null>>
+    + date_mise_a_jour : DateTimeField <<auto_now>>
+    --
+    {field} # quantite_reelle : int <<property>>
+    {field} # est_en_alerte : bool <<property>>
+    --
+    + __str__() : str
+    + clean()
+  }
+
+  class InstanceRessource {
+    + id_instance : AutoField <<PK>>
+    + numero_inventaire : CharField(50) <<unique>>
+    + date_acquisition : DateField <<null>>
+    + valeur_acquisition : DecimalField(10,2) <<null>>
+    + statut : CharField(50)\n  [en_stock | en_service | en_maintenance\n   | hors_service | retire]
+    + etat : CharField(50)\n  [neuf | bon_etat | endommage\n   | hors_service | retourne]
+    + localisation_actuelle : CharField(200)
+    + date_derniere_affectation : DateField <<null>>
+    + observation : TextField
+    --
+    + __str__() : str
+    + clean()
+  }
+
+  class MouvementStock {
+    + id_mouvement : AutoField <<PK>>
+    + type_mouvement : CharField(50)\n  [entree | sortie | retour | transfert | rebut]
+    + quantite : IntegerField
+    + date_mouvement : DateTimeField <<auto_now_add>>
+    + observation : TextField
+    + content_type : FK(ContentType) <<null>>
+    + object_id : PositiveIntegerField <<null>>
+    + source : GenericForeignKey
+    --
+    + __str__() : str
+  }
+
+  Categorie       "1"    <--o "0..*" SousCategorie     : id_categorie
+  SousCategorie   "0..1" <--o "0..*" SousCategorie     : id_parent_sous_categorie (self)
+  Categorie       "1"    <--o "0..*" Ressource          : id_categorie
+  SousCategorie   "0..1" <--o "0..*" Ressource          : id_sous_categorie
+  Ressource       "1"    <--||       Stock               : id_ressource (O2O)
+  Ressource       "1"    <--o "0..*" InstanceRessource   : id_ressource
+  Ressource       "1"    <--o "0..*" MouvementStock      : id_ressource
+  InstanceRessource "0..1" <--o "0..*" MouvementStock   : id_instance_ressource
+  Utilisateur     "0..1" <--o "0..*" MouvementStock     : id_utilisateur
+}
+
+' ══════════════════════════════════════════════════════════════════
+' APP : procurement
+' ══════════════════════════════════════════════════════════════════
+package "procurement" #FFFBEB {
+
+  class MarcheBC {
+    + id_marche : AutoField <<PK>>
+    + reference : CharField(100) <<unique>>
+    + type_acquisition : CharField(20)\n  [marche | bon_commande | donation]
+    + source : CharField(10)\n  [manuel | import]
+    + date_creation : DateField <<auto_now_add>>
+    + delai_reception_jours : IntegerField
+    + date_livraison_prevue : DateField <<null>>
+    + statut : CharField(30)\n  [en_attente_livraison\n   | receptionne_et_stocke]
+    + fichier_cps : FileField <<null>>
+    + type_donateur : CharField(50)
+    + nom_donateur : CharField(255)
+    + organisme_donateur : CharField(255)
+    + contact_donateur : CharField(255)
+    --
+    + save() [calcule délai + crée étapes]
+    + __str__() : str
+  }
+
+  class MarcheEtape {
+    + id_etape : AutoField <<PK>>
+    + ordre : IntegerField [1..8]
+    + nom_etape : CharField(30)\n  [marche_cree | contrat_signe\n   | en_attente_livraison | livraison_en_cours\n   | receptionne_magasin | controle_qualite\n   | paiement_en_cours | paiement_effectue]
+    + statut : CharField(20)\n  [en_attente | en_cours | complete | bloque]
+    + date_debut : DateTimeField <<null>>
+    + date_fin : DateTimeField <<null>>
+    + commentaire : TextField
+    --
+    + {static} create_default_etapes(marche)
+    + __str__() : str
+  }
+
+  class ImportExcelBC {
+    + id_import : AutoField <<PK>>
+    + fichier_excel_original : FileField
+    + titre_fichier : CharField(255)
+    + date_import : DateTimeField <<auto_now_add>>
+    + reference_document : CharField(150)
+    + fournisseur_denomination : CharField(255)
+    + fournisseur_telephone : CharField(50)
+    + fournisseur_email : EmailField
+    + fournisseur_adresse : TextField
+    + delai_execution : CharField(255)
+    + statut_import : CharField(20)\n  [en_attente | brouillon | en_revision\n   | valide | non_conforme | autre | rejete]
+    + file_type : CharField(10) [xlsx | pdf]
+    + source_type : CharField(20) [bc | marche | donation]
+    + observations : TextField
+    --
+    + __str__() : str
+  }
+
+  class StagingItem {
+    + id_staging : AutoField <<PK>>
+    + designation_brute : CharField(500)
+    + description : TextField
+    + designation_normalisee : CharField(255)
+    + quantite : IntegerField = 0
+    + type_detecte : CharField(20)\n  [consommable | bien_inventaire]
+    + statut : CharField(20)\n  [en_attente | approuve | rejete | modifie]
+    + correction_gestionnaire : TextField
+    + motif_rejet : CharField(255)
+    + commentaire_rejet : TextField
+    + prix_unitaire_ht : DecimalField(12,2) <<null>>
+    + prix_total_ht : DecimalField(12,2) <<null>>
+    + unite : CharField(20) = "U"
+    --
+    {field} # needs_review : bool <<property>>
+    --
+    + __str__() : str
+  }
+
+  class LotArticle {
+    + id_lot : AutoField <<PK>>
+    + numero_lot : IntegerField
+    + designation : CharField(255)
+    + quantite_commandee : IntegerField
+    + quantite_recue : IntegerField = 0
+    + observation : TextField
+    --
+    unique_together: (id_marche, numero_lot)
+    + __str__() : str
+  }
+
+  Fournisseur   "0..1" <--o "0..*" MarcheBC        : id_fournisseur
+  Utilisateur   "0..1" <--o "0..*" MarcheBC        : id_cree_par
+  MarcheBC      "1"    <--o "0..*" MarcheEtape     : id_marche
+  Utilisateur   "0..1" <--o "0..*" MarcheEtape     : id_modifie_par
+  MarcheBC      "1"    <--||       ImportExcelBC    : id_marche (O2O)
+  Utilisateur   "0..1" <--o "0..*" ImportExcelBC   : id_importe_par
+  ImportExcelBC "1"    <--o "0..*" StagingItem     : id_import
+  Categorie     "0..1" <--o "0..*" StagingItem     : id_categorie_suggeree
+  SousCategorie "0..1" <--o "0..*" StagingItem     : id_sous_categorie_suggeree
+  Ressource     "0..1" <--o "0..*" StagingItem     : id_ressource_liee
+  MarcheBC      "1"    <--o "0..*" LotArticle      : id_marche
+  Ressource     "1"    <--o "0..*" LotArticle      : id_ressource
+  LotArticle    "0..1" <--o "0..*" InstanceRessource : id_lot
+}
+
+' ══════════════════════════════════════════════════════════════════
+' APP : requests
+' ══════════════════════════════════════════════════════════════════
+package "requests" #F5F3FF {
+
+  class Demande {
+    + id_demande : AutoField <<PK>>
+    + numero : CharField(30) <<unique, null>>
+    + date_demande : DateTimeField <<auto_now_add>>
+    + urgence : CharField(10)\n  [normal | moyen | urgent]
+    + statut : CharField(30)\n  [en_attente | en_cours | partielle\n   | totale | refusee]
+    + type_demandeur : CharField(30) = "chef_service"
+    + beneficiaire_type : CharField(30) = "service"
+    + beneficiaire_nom : CharField(200)
+    + beneficiaire_detail : TextField
+    + justification : TextField
+    + date_validation : DateTimeField <<null>>
+    + commentaire_validation : TextField
+    + motif_refus : TextField
+    --
+    {field} # lien_suivi : str <<property>>
+    --
+    + save() [génère numéro DEM-YYYY-NNNN]
+    + __str__() : str
+  }
+
+  class LigneDemande {
+    + id_ligne : AutoField <<PK>>
+    + quantite_demandee : IntegerField
+    + quantite_accordee : IntegerField = 0
+    + quantite_livree : IntegerField = 0
+    + disponibilite_pct : IntegerField(0..100) = 0
+    + observation : TextField
+    --
+    + __str__() : str
+  }
+
+  Utilisateur "1"    <--o "0..*" Demande      : id_chef_demandeur
+  Service     "1"    <--o "0..*" Demande      : id_service
+  Utilisateur "0..1" <--o "0..*" Demande      : id_valide_par
+  Demande     "1"    <--o "0..*" LigneDemande : id_demande
+  Ressource   "1"    <--o "0..*" LigneDemande : id_ressource
+}
+
+' ══════════════════════════════════════════════════════════════════
+' APP : decharge
+' ══════════════════════════════════════════════════════════════════
+package "decharge" #FFF7ED {
+
+  class Decharge {
+    + id_decharge : AutoField <<PK>>
+    + numero_decharge : CharField(50) <<unique>>
+    + date_generation : DateTimeField <<auto_now_add>>
+    + date_livraison : DateField <<null>>
+    + fichier_pdf : FileField <<null>>
+    + observation : TextField
+    --
+    {field} # statut_signature : str <<property>>
+    --
+    + save() [génère numéro DCH-YYYY-NNNN]
+    + __str__() : str
+  }
+
+  class LigneDecharge {
+    + id_ligne_decharge : AutoField <<PK>>
+    + quantite : IntegerField
+    + type_ligne : CharField(20)\n  [bien_inventaire | consommable]
+    + observation : TextField
+    --
+    + clean()
+    + __str__() : str
+  }
+
+  class SignatureDecharge {
+    + id_signature : AutoField <<PK>>
+    + date_signature : DateTimeField <<null>>
+    + observation_chef : TextField
+    + statut : CharField(20)\n  [non_signe | signe]
+    + date_validation_systeme : DateTimeField <<null>>
+    --
+    + __str__() : str
+  }
+
+  Demande           "1"    <--||       Decharge         : id_demande (O2O)
+  Utilisateur       "0..1" <--o "0..*" Decharge         : id_genere_par
+  Utilisateur       "0..1" <--o "0..*" Decharge         : id_livre_a
+  Decharge          "1"    <--o "0..*" LigneDecharge    : id_decharge
+  Ressource         "1"    <--o "0..*" LigneDecharge    : id_ressource
+  InstanceRessource "0..1" <--o "0..*" LigneDecharge    : id_instance_ressource
+  Decharge          "1"    <--||       SignatureDecharge : id_decharge (O2O)
+  Utilisateur       "0..1" <--o "0..*" SignatureDecharge : id_valide_par
+}
+
+' ══════════════════════════════════════════════════════════════════
+' APP : returns
+' ══════════════════════════════════════════════════════════════════
+package "returns" #FFF1F2 {
+
+  class RetourMateriel {
+    + id_retour : AutoField <<PK>>
+    + date_retour : DateField <<auto_now_add>>
+    + motif_retour : CharField(20)\n  [panne | inutilise]
+    + statut : CharField(20)\n  [en_attente | receptionne]
+    + date_reception : DateTimeField <<null>>
+    + decision : CharField(20)\n  [hors_service | en_stock | repare\n   | non_repare | rebut | reaffecte]
+    + justification_decision : TextField
+    + observation : TextField
+    --
+    + __str__() : str
+  }
+
+  Ressource         "1"    <--o "0..*" RetourMateriel : id_ressource
+  InstanceRessource "0..1" <--o "0..*" RetourMateriel : id_instance_ressource
+  Utilisateur       "0..1" <--o "0..*" RetourMateriel : id_retourne_par
+  Utilisateur       "0..1" <--o "0..*" RetourMateriel : id_traite_par
+}
+
+' ══════════════════════════════════════════════════════════════════
+' APP : alerts
+' ══════════════════════════════════════════════════════════════════
+package "alerts" #F0FDF4 {
+
+  class AlerteDelai {
+    + id_alerte : AutoField <<PK>>
+    + date_echeance : DateField
+    + niveau_alerte : CharField(20)\n  [info | warning | critique]
+    + date_alerte : DateTimeField <<auto_now_add>>
+    + penalite_applicable : BooleanField = False
+    + acquitte : BooleanField = False
+    --
+    {field} # jours_restants : int <<property>>
+    --
+    + __str__() : str
+  }
+
+  class Notification {
+    + id_notification : AutoField <<PK>>
+    + type : CharField(30)\n  [import_staging | demande_soumise\n   | demande_validee | demande_rejetee\n   | decharge_generee | decharge_signee\n   | retour_enregistre | alerte_stock]
+    + niveau : CharField(20)\n  [info | success | warning | danger]
+    + message : CharField(500)
+    + lien : CharField(500) <<null>>
+    + lu : BooleanField = False
+    + created_at : DateTimeField <<auto_now_add>>
+    + objet_id : IntegerField <<null>>
+    --
+    + __str__() : str
+  }
+
+  class JournalAudit {
+    + id_log : AutoField <<PK>>
+    + type_action : CharField(100)
+    + table_cible : CharField(100)
+    + id_enregistrement_cible : IntegerField
+    + ancienne_valeur : TextField
+    + nouvelle_valeur : TextField
+    + date_action : DateTimeField <<auto_now_add>>
+    + adresse_ip : GenericIPAddressField <<null>>
+    + user_agent : CharField(500)
+    --
+    + __str__() : str
+  }
+
+  MarcheBC    "1"    <--o "0..*" AlerteDelai  : id_marche
+  Utilisateur "1"    <--o "0..*" Notification : destinataire
+  Utilisateur "0..1" <--o "0..*" JournalAudit : id_utilisateur
+}
+
+@enduml

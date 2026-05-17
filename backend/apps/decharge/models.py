@@ -114,17 +114,13 @@ class LigneDecharge(models.Model):
 
 class SignatureDecharge(models.Model):
     STATUT_CHOICES = [
-        ("en_attente", "en_attente"),
+        ("non_signe", "non_signe"),
         ("signe", "signe"),
-        ("valide", "valide"),
-        ("rejete", "rejete"),
     ]
 
     id_signature = models.AutoField(primary_key=True)
     date_signature = models.DateTimeField(null=True, blank=True)
-    fichier_scan_signe = models.FileField(upload_to="decharges/scans/", null=True, blank=True)
-    observation_chef = models.TextField(blank=True)
-    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="en_attente")
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="non_signe")
     date_validation_systeme = models.DateTimeField(null=True, blank=True)
     id_decharge = models.OneToOneField(
         Decharge,

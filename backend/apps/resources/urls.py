@@ -1,3 +1,4 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
@@ -7,6 +8,7 @@ from .views import (
     RessourceViewSet,
     SousCategorieViewSet,
     StockViewSet,
+    stock_summary,
 )
 
 router = DefaultRouter()
@@ -18,4 +20,6 @@ router.register("stock", StockViewSet, basename="stock-alias")
 router.register("instances", InstanceRessourceViewSet, basename="instance-ressource")
 router.register("mouvements", MouvementStockViewSet, basename="mouvement-stock")
 
-urlpatterns = router.urls
+urlpatterns = [
+    path("stock/summary/", stock_summary, name="stock-summary"),
+] + router.urls

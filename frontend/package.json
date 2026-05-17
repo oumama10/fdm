@@ -4,14 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "node ./node_modules/vite/bin/vite.js",
+    "build": "node ./node_modules/vite/bin/vite.js build",
+    "preview": "node ./node_modules/vite/bin/vite.js preview"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
-    "@tanstack/react-query": "^5.0.0",
-    "axios": "^1.6.0",
+    "@tanstack/react-query": "^5.100.6",
+    "axios": "^1.15.2",
+    "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.293.0",
     "react": "^18.2.0",
@@ -19,13 +20,17 @@
     "react-dropzone": "^14.2.3",
     "react-hook-form": "^7.50.0",
     "react-hot-toast": "^2.4.1",
-    "react-router-dom": "^6.22.3",
-    "recharts": "^2.8.0",
+    "react-router-dom": "^6.30.3",
+    "recharts": "^2.15.4",
+    "tailwind-merge": "^3.5.0",
     "zod": "^3.22.4",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.12",
+    "tailwindcss": "^3.4.19",
     "vite": "^8.0.0"
   }
 }

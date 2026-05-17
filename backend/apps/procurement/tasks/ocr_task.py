@@ -45,6 +45,14 @@ def extract_excel_items(self, import_id: int, retry_enabled: bool = True) -> Non
         file_path = import_obj.fichier_excel_original.path
         logger.info("[TASK] Opening Excel file: %s", file_path)
 
+        # Path traversal guard
+        from django.conf import settings as _settings  # noqa: PLC0415
+        import pathlib  # noqa: PLC0415
+        safe_path = pathlib.Path(file_path).resolve()
+        media_root = pathlib.Path(_settings.MEDIA_ROOT).resolve()
+        if not str(safe_path).startswith(str(media_root)):
+            raise ValueError(f"Chemin de fichier non autorisé : {file_path}")
+
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Excel file not found: {file_path}")
 
@@ -72,8 +80,8 @@ def extract_excel_items(self, import_id: int, retry_enabled: bool = True) -> Non
             try:
                 items = AIExtractor.extract_from_text(raw_text)
             except Exception as exc:
-                logger.exception("LLM extraction failed")
-                raise RuntimeError("AI extraction failed") from exc
+                logger.exception("Regex extraction failed")
+                raise RuntimeError("Extraction regex échouée") from exc
 
             logger.info("AI returned %s items", len(items))
             metadata = AIExtractor.build_import_metadata(items)
@@ -115,7 +123,6 @@ def extract_excel_items(self, import_id: int, retry_enabled: bool = True) -> Non
                         unite=str(item.get("unite") or "U"),
                         prix_unitaire_ht=item.get("prix_unitaire_ht"),
                         prix_total_ht=item.get("prix_total_ht"),
-                        confiance_ia=Decimal("0.90"),
                         type_detecte="",
                         statut="en_attente",
                     )

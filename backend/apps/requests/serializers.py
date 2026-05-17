@@ -9,15 +9,32 @@ from .models import Demande, LigneDemande
 
 
 class _RessourceBriefSerializer(serializers.Serializer):
-    """Read-only: {id_ressource, designation, categorie_nom, unite_mesure}."""
+    """Read-only brief resource info for demande lines."""
 
     id_ressource = serializers.IntegerField()
     designation = serializers.CharField()
     unite_mesure = serializers.CharField()
+    reference = serializers.SerializerMethodField()
     categorie_nom = serializers.SerializerMethodField()
+    sous_categorie_nom = serializers.SerializerMethodField()
+    categorie_metier_nom = serializers.SerializerMethodField()
+
+    def get_reference(self, obj) -> str:
+        return f"ART-{obj.pk:03d}"
 
     def get_categorie_nom(self, obj) -> str:
         return obj.id_categorie.nom_categorie if obj.id_categorie else ""
+
+    def get_sous_categorie_nom(self, obj) -> str:
+        sc = obj.id_sous_categorie
+        return sc.nom_sous_categorie if sc else ""
+
+    def get_categorie_metier_nom(self, obj) -> str:
+        sc = obj.id_sous_categorie
+        if not sc:
+            return ""
+        parent = sc.id_parent_sous_categorie
+        return parent.nom_sous_categorie if parent else sc.nom_sous_categorie
 
 
 class _UtilisateurBriefSerializer(serializers.Serializer):
@@ -48,7 +65,7 @@ class LigneDemandeSerializer(serializers.ModelSerializer):
             "id_ligne",
             "quantite_demandee",
             "quantite_accordee",
-            "disponibilite_pct",
+            "quantite_livree",
             "observation",
             "id_demande",
             "id_ressource",
@@ -69,17 +86,30 @@ class DemandeSerializer(serializers.ModelSerializer):
         source="id_chef_demandeur", read_only=True
     )
     service = _ServiceBriefSerializer(source="id_service", read_only=True)
+    decharge_id = serializers.SerializerMethodField()
+
+    def get_decharge_id(self, obj):
+        try:
+            return obj.decharge.pk
+        except Exception:
+            return None
 
     class Meta:
         model = Demande
         fields = [
             "id_demande",
+            "numero",
             "date_demande",
             "urgence",
             "statut",
+            "type_demandeur",
+            "beneficiaire_type",
+            "beneficiaire_nom",
+            "beneficiaire_detail",
             "justification",
             "date_validation",
             "commentaire_validation",
+            "motif_refus",
             "id_chef_demandeur",
             "chef_demandeur",
             "id_service",
@@ -87,14 +117,17 @@ class DemandeSerializer(serializers.ModelSerializer):
             "id_valide_par",
             "lignes",
             "lien_suivi",
+            "decharge_id",
         ]
         read_only_fields = [
             "id_demande",
+            "numero",
             "date_demande",
             "statut",
             "date_validation",
             "id_valide_par",
             "lien_suivi",
+            "decharge_id",
         ]
 
 
@@ -120,42 +153,22 @@ class DemandeCreateSerializer(serializers.ModelSerializer):
 
     On creation:
     - id_chef_demandeur is injected from request.user (via view's perform_create).
-    - disponibilite_pct is computed per ligne from live stock/instance data.
     """
 
     lignes = _LigneCreateSerializer(many=True, write_only=True)
 
     class Meta:
         model = Demande
-        fields = ["urgence", "justification", "id_service", "lignes"]
-
-    # ── availability helper ───────────────────────────────────────────────────
-
-    @staticmethod
-    def _compute_disponibilite(ressource, quantite_demandee: int) -> int:
-        """
-        Return an integer percentage [0–100] representing how much of
-        *quantite_demandee* is currently available.
-
-        Consommable  → compares against Stock.quantite_disponible.
-        Bien inventaire → counts InstanceRessource with statut='en_stock'.
-        """
-        from apps.resources.models import InstanceRessource, Stock  # noqa: PLC0415
-
-        if ressource.is_consommable:
-            try:
-                stock = Stock.objects.get(id_ressource=ressource)
-                disponible = max(stock.quantite_disponible, 0)
-            except Stock.DoesNotExist:
-                disponible = 0
-        else:
-            disponible = InstanceRessource.objects.filter(
-                id_ressource=ressource, statut="en_stock"
-            ).count()
-
-        if quantite_demandee <= 0:
-            return 0
-        return min(int((disponible / quantite_demandee) * 100), 100)
+        fields = [
+            "urgence",
+            "type_demandeur",
+            "beneficiaire_type",
+            "beneficiaire_nom",
+            "beneficiaire_detail",
+            "justification",
+            "id_service",
+            "lignes",
+        ]
 
     # ── create ───────────────────────────────────────────────────────────────
 
@@ -177,13 +190,11 @@ class DemandeCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"lignes": f"Ressource id={ressource_id} introuvable."}
                 )
-            dispo_pct = self._compute_disponibilite(ressource, quantite)
             lignes_bulk.append(
                 LigneDemande(
                     id_demande=demande,
                     id_ressource=ressource,
                     quantite_demandee=quantite,
-                    disponibilite_pct=dispo_pct,
                 )
             )
         LigneDemande.objects.bulk_create(lignes_bulk)

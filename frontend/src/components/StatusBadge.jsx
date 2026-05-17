@@ -3,7 +3,7 @@ import { Badge } from './ui/badge';
 
 const statusMap = {
   en_stock: { label: 'En stock', color: '#166534', bg: '#dcfce7', border: '#bbf7d0' },
-  en_service: { label: 'En service', color: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe' },
+  en_service: { label: 'Affecté', color: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe' },
   en_reparation: { label: 'En réparation', color: '#92400e', bg: '#fef3c7', border: '#fde68a' },
   rebute: { label: 'Rebuté', color: '#991b1b', bg: '#fee2e2', border: '#fecaca' },
   en_cours: { label: 'En cours', color: '#92400e', bg: '#fef3c7', border: '#fde68a' },
@@ -23,6 +23,7 @@ const statusMap = {
   bon: { label: 'Bon', color: '#166534', bg: '#dcfce7', border: '#bbf7d0' },
   moyen: { label: 'Moyen', color: '#92400e', bg: '#fef3c7', border: '#fde68a' },
   mauvais: { label: 'Mauvais', color: '#991b1b', bg: '#fee2e2', border: '#fecaca' },
+  retourne: { label: 'Retourné', color: '#6d28d9', bg: '#ede9fe', border: '#ddd6fe' },
 };
 
 export function StatusBadge({ status }) {

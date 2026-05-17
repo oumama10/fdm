@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -133,15 +134,69 @@ class MarcheBCViewSet(viewsets.ModelViewSet):
         ):
             fournisseur_profile = getattr(user, "fournisseur_profile", None)
             if fournisseur_profile is not None:
-                # fournisseur_profile is a reverse OneToOne — a single object
                 qs = qs.filter(id_fournisseur=fournisseur_profile)
             else:
                 qs = qs.none()
+
+        if type_acquisition := self.request.query_params.get("type_acquisition"):
+            if type_acquisition in ("marche", "bon_commande", "donation"):
+                qs = qs.filter(type_acquisition=type_acquisition)
+
+        # Only surface marchés that belong on the list pages:
+        # - all receptionne_et_stocke
+        # - en_attente_livraison only when created via the manual form (source=manuel)
+        qs = qs.filter(
+            Q(statut="receptionne_et_stocke") |
+            Q(statut="en_attente_livraison", source="manuel")
+        )
 
         return qs
 
     def perform_create(self, serializer):
         serializer.save(id_cree_par=self.request.user)
+
+    @action(detail=True, methods=["post"], url_path="confirmer-reception")
+    def confirmer_reception(self, request, pk=None):
+        marche = self.get_object()
+
+        if marche.statut == "receptionne_et_stocke":
+            return Response(
+                {"detail": "Ce marché est déjà réceptionné et stocké."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if marche.statut != "en_attente_livraison":
+            return Response(
+                {"detail": "Seul un marché en attente de livraison peut être confirmé."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from .signals import (  # noqa: PLC0415
+            _complete_reception_etapes,
+            _find_or_create_ressource,
+            _integrate_item_into_stock,
+            _sync_marche_reference,
+        )
+
+        import_obj = getattr(marche, "import_excel", None)
+        if import_obj:
+            items = StagingItem.objects.filter(id_import=import_obj).select_related(
+                "id_ressource_liee", "id_categorie_suggeree", "id_sous_categorie_suggeree"
+            )
+            for item in items:
+                ressource = _find_or_create_ressource(item)
+                if ressource:
+                    _integrate_item_into_stock(item, ressource, marche)
+            StagingItem.objects.filter(id_import=import_obj).update(statut="approuve")
+            ImportExcelBC.objects.filter(pk=import_obj.pk).update(statut_import="valide")
+            _sync_marche_reference(marche, import_obj)
+
+        marche.statut = "receptionne_et_stocke"
+        marche.save(update_fields=["statut", "reference"])
+        _complete_reception_etapes(marche)
+
+        serializer = self.get_serializer(marche)
+        return Response(serializer.data)
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +255,7 @@ class ImportExcelBCViewSet(
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
     """
@@ -221,12 +277,23 @@ class ImportExcelBCViewSet(
             return ImportExcelBCStatusSerializer
         return ImportExcelBCSerializer
 
+    _SCOPE_STATUTS = {
+        "a_envoyer": ["brouillon", "en_attente"],
+        "extraites":  ["en_revision", "valide", "rejete", "non_conforme", "autre"],
+    }
+
     def get_queryset(self):
-        return (
+        qs = (
             ImportExcelBC.objects.select_related("id_marche", "id_importe_par")
             .prefetch_related("staging_items")
             .order_by("-date_import")
         )
+        scope = self.request.query_params.get("scope")
+        if scope and scope in self._SCOPE_STATUTS:
+            qs = qs.filter(statut_import__in=self._SCOPE_STATUTS[scope])
+        elif statut_import := self.request.query_params.get("statut_import"):
+            qs = qs.filter(statut_import=statut_import)
+        return qs
 
     def perform_create(self, serializer):
         instance = serializer.save(id_importe_par=self.request.user)
@@ -234,24 +301,31 @@ class ImportExcelBCViewSet(
 
     @action(detail=True, methods=["post"], url_path="envoyer-gestionnaire")
     def envoyer_gestionnaire(self, request, pk=None):
-        from apps.alerts.models import Notification  # noqa: PLC0415
+        from apps.alerts.models import NotificationType  # noqa: PLC0415
+        from apps.alerts.notification_service import create_notification  # noqa: PLC0415
         from apps.users.models import Utilisateur  # noqa: PLC0415
 
         import_obj = self.get_object()
 
-        if import_obj.statut_import == "rejete":
+        if import_obj.statut_import in ("rejete", "non_conforme", "autre"):
             return Response(
                 {"detail": "Impossible d'envoyer un import rejeté."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if import_obj.statut_import == "valide":
+        if import_obj.statut_import == "en_revision":
             return Response(
-                {"detail": "Cet import a déjà été envoyé au gestionnaire."},
+                {"detail": "Cet import est déjà en révision gestionnaire."},
                 status=status.HTTP_200_OK,
             )
 
-        if import_obj.statut_import != "brouillon":
+        if import_obj.statut_import == "valide":
+            return Response(
+                {"detail": "Cet import est déjà validé."},
+                status=status.HTTP_200_OK,
+            )
+
+        if import_obj.statut_import not in ("en_attente", "brouillon"):
             return Response(
                 {"detail": "L'extraction doit être terminée avant envoi au gestionnaire."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -264,38 +338,30 @@ class ImportExcelBCViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        content_type = ContentType.objects.get_for_model(ImportExcelBC)
         gestionnaires = Utilisateur.objects.filter(
             id_role__nom_role="gestionnaire_magasin",
             actif=True,
         ).only("id_utilisateur")
 
-        notifications = [
-            Notification(
-                id_destinataire=g,
-                type_notification="validation_requise",
-                titre="Import prêt pour révision",
-                message=(
+        for gestionnaire in gestionnaires:
+            create_notification(
+                gestionnaire,
+                NotificationType.IMPORT_STAGING,
+                (
                     f"L'import #{import_obj.id_import} contient {item_count} article(s) "
                     "en attente de validation."
                 ),
-                canal="web",
-                content_type=content_type,
-                object_id=import_obj.id_import,
+                objet_id=import_obj.id_import,
+                lien=f"/gestionnaire/donnees-extraites/{import_obj.id_import}/",
             )
-            for g in gestionnaires
-        ]
 
-        if notifications:
-            Notification.objects.bulk_create(notifications)
-
-        import_obj.statut_import = "valide"
+        import_obj.statut_import = "en_revision"
         import_obj.save(update_fields=["statut_import"])
 
         return Response(
             {
                 "detail": "Import envoyé au gestionnaire.",
-                "notifications_sent": len(notifications),
+                "notifications_sent": gestionnaires.count(),
             },
             status=status.HTTP_200_OK,
         )
@@ -316,14 +382,36 @@ class DirectImportView(APIView):
         if not fichier:
             return Response({"error": "Fichier manquant"}, status=400)
 
+        # Vérification 1 — taille maximale (10 Mo)
+        if fichier.size > 10 * 1024 * 1024:
+            return Response(
+                {"error": "Fichier trop volumineux. Taille maximale : 10 Mo."},
+                status=400,
+            )
+
+        # Vérification 2 — extension autorisée
         filename = (fichier.name or "").lower()
         if filename.endswith(".pdf"):
             file_type = "pdf"
-        elif filename.endswith(".xlsx"):
+        elif filename.endswith((".xlsx", ".xls")):
             file_type = "xlsx"
         else:
             return Response(
-                {"error": "Format non supporté. Utilisez .xlsx ou .pdf"},
+                {"error": "Format non supporté. Utilisez .pdf, .xlsx ou .xls uniquement."},
+                status=400,
+            )
+
+        # Vérification 3 — magic bytes (anti-spoofing)
+        header = fichier.read(8)
+        fichier.seek(0)
+        if file_type == "pdf" and not header.startswith(b"%PDF"):
+            return Response(
+                {"error": "Le contenu du fichier ne correspond pas à un PDF valide."},
+                status=400,
+            )
+        if file_type == "xlsx" and not header.startswith(b"PK"):
+            return Response(
+                {"error": "Le contenu du fichier ne correspond pas à un Excel valide."},
                 status=400,
             )
 
@@ -346,6 +434,7 @@ class DirectImportView(APIView):
             reference=f"IMPORT-{timestamp}",
             type_acquisition=type_acquisition,
             statut="en_attente_livraison",
+            source="import",
             id_cree_par=request.user,
             id_fournisseur=None,
         )
@@ -355,7 +444,7 @@ class DirectImportView(APIView):
             titre_fichier=os.path.splitext(fichier.name)[0][:255],
             file_type=file_type,
             source_type=source_type_import,
-            statut_import="en_revision",
+            statut_import="en_attente",
             id_marche=marche,
             id_importe_par=request.user,
         )
@@ -384,6 +473,10 @@ class ManualImportView(APIView):
         if type_acquisition not in ("marche", "bon_commande", "donation"):
             type_acquisition = "bon_commande"
 
+        statut_livraison = data.get("statut_livraison") or "en_attente_livraison"
+        if statut_livraison not in ("en_attente_livraison", "receptionne_et_stocke"):
+            statut_livraison = "en_attente_livraison"
+
         source_type = "bc" if type_acquisition == "bon_commande" else type_acquisition
         if source_type not in ("bc", "marche", "donation"):
             source_type = "bc"
@@ -395,6 +488,10 @@ class ManualImportView(APIView):
         fournisseur_email = (data.get("fournisseur_email") or "").strip()
         fournisseur_adresse = (data.get("fournisseur_adresse") or "").strip()
         delai_execution = (data.get("delai_execution") or "").strip()[:255]
+        type_donateur = (data.get("type_donateur") or "").strip()[:50]
+        nom_donateur = (data.get("nom_donateur") or "").strip()[:255]
+        organisme_donateur = (data.get("organisme_donateur") or "").strip()[:255]
+        contact_donateur = (data.get("contact_donateur") or "").strip()[:255]
 
         lignes = data.get("lignes") or []
         if not isinstance(lignes, list) or len(lignes) == 0:
@@ -422,8 +519,13 @@ class ManualImportView(APIView):
             reference=marche_reference,
             type_acquisition=type_acquisition,
             statut="en_attente_livraison",
+            source="manuel",
             id_cree_par=request.user,
             id_fournisseur=fournisseur_obj,
+            type_donateur=type_donateur if type_acquisition == "donation" else "",
+            nom_donateur=nom_donateur if type_acquisition == "donation" else "",
+            organisme_donateur=organisme_donateur if type_acquisition == "donation" else "",
+            contact_donateur=contact_donateur if type_acquisition == "donation" else "",
         )
 
         import_obj = ImportExcelBC(
@@ -449,6 +551,21 @@ class ManualImportView(APIView):
         )
         import_obj.save()
 
+        from apps.resources.models import Categorie as CategorieModel  # noqa: PLC0415
+
+        cat_id_by_type = {
+            "consommable": CategorieModel.objects.filter(nom_categorie="Consommable").values_list("pk", flat=True).first(),
+            "bien_inventaire": CategorieModel.objects.filter(nom_categorie="Bien Inventaire").values_list("pk", flat=True).first(),
+        }
+
+        def _to_decimal(value):
+            if value in (None, ""):
+                return None
+            try:
+                return Decimal(str(value).replace(" ", "").replace(",", ".")).quantize(Decimal("0.01"))
+            except Exception:
+                return None
+
         staging_items = []
         for ligne in lignes:
             if not isinstance(ligne, dict):
@@ -466,13 +583,23 @@ class ManualImportView(APIView):
             except Exception:
                 quantite = 1
 
-            def _to_decimal(value):
-                if value in (None, ""):
-                    return None
+            type_detecte = str(ligne.get("type_produit") or "").strip()
+            if type_detecte not in ("consommable", "bien_inventaire"):
+                type_detecte = ""
+
+            # DB Categorie ID derived from type (Consommable / Bien Inventaire)
+            categorie_id = cat_id_by_type.get(type_detecte)
+
+            # Sous-catégorie: prefer child (id_sous_categorie), fall back to top-level (id_categorie_metier)
+            try:
+                sous_categorie_id = int(ligne.get("id_sous_categorie") or 0) or None
+            except (TypeError, ValueError):
+                sous_categorie_id = None
+            if not sous_categorie_id:
                 try:
-                    return Decimal(str(value).replace(" ", "").replace(",", ".")).quantize(Decimal("0.01"))
-                except Exception:
-                    return None
+                    sous_categorie_id = int(ligne.get("id_categorie_metier") or 0) or None
+                except (TypeError, ValueError):
+                    sous_categorie_id = None
 
             staging_items.append(
                 StagingItem(
@@ -484,7 +611,9 @@ class ManualImportView(APIView):
                     unite=unite or "U",
                     prix_unitaire_ht=_to_decimal(ligne.get("prix_unitaire_ht")),
                     prix_total_ht=_to_decimal(ligne.get("prix_total_ht")),
-                    confiance_ia=Decimal("1.00"),
+                    type_detecte=type_detecte,
+                    id_categorie_suggeree_id=categorie_id,
+                    id_sous_categorie_suggeree_id=sous_categorie_id,
                     statut="en_attente",
                 )
             )
@@ -495,6 +624,25 @@ class ManualImportView(APIView):
             return Response({"detail": "Les lignes sont invalides."}, status=400)
 
         StagingItem.objects.bulk_create(staging_items, batch_size=200)
+
+        if statut_livraison == "receptionne_et_stocke":
+            from .signals import _find_or_create_ressource, _integrate_item_into_stock, _sync_marche_reference  # noqa: PLC0415
+
+            for item in StagingItem.objects.filter(id_import=import_obj).select_related(
+                "id_ressource_liee", "id_categorie_suggeree", "id_sous_categorie_suggeree"
+            ):
+                ressource = _find_or_create_ressource(item)
+                if ressource:
+                    _integrate_item_into_stock(item, ressource, marche)
+
+            StagingItem.objects.filter(id_import=import_obj).update(statut="approuve")
+            ImportExcelBC.objects.filter(pk=import_obj.pk).update(statut_import="valide")
+            _sync_marche_reference(marche, import_obj)
+            marche.statut = "receptionne_et_stocke"
+            marche.save(update_fields=["statut", "reference"])
+            MarcheEtape.objects.filter(
+                id_marche=marche, nom_etape="receptionne_magasin"
+            ).update(statut="complete", date_fin=timezone.now())
 
         return Response(
             {
@@ -518,6 +666,16 @@ class _NoCreateViewSet(
     viewsets.GenericViewSet,
 ):
     """List + retrieve + update — no create, no destroy."""
+
+
+_MODIFIE_TRACKED = (
+    "designation_normalisee",
+    "type_detecte",
+    "id_categorie_suggeree_id",
+    "id_sous_categorie_suggeree_id",
+    "quantite",
+    "prix_unitaire_ht",
+)
 
 
 class StagingItemViewSet(_NoCreateViewSet):
@@ -549,6 +707,17 @@ class StagingItemViewSet(_NoCreateViewSet):
         if statut := self.request.query_params.get("statut"):
             qs = qs.filter(statut=statut)
         return qs
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        if instance.statut not in ("approuve", "rejete"):
+            before = {f: getattr(instance, f) for f in _MODIFIE_TRACKED}
+            serializer.save()
+            if any(before[f] != getattr(instance, f) for f in _MODIFIE_TRACKED):
+                instance.statut = "modifie"
+                instance.save(update_fields=["statut"])
+        else:
+            serializer.save()
 
     # ── approve ──────────────────────────────────────────────────────────────
 
@@ -593,10 +762,81 @@ class StagingItemViewSet(_NoCreateViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        VALID_MOTIFS = ("non_conforme", "document_invalide", "autre")
+        motif = str(request.data.get("motif_rejet") or "autre").strip()
+        if motif not in VALID_MOTIFS:
+            motif = "autre"
         item.statut = "rejete"
-        item.save(update_fields=["statut"])
+        item.motif_rejet = motif
+        item.commentaire_rejet = str(request.data.get("commentaire_rejet") or "").strip()
+        item.save(update_fields=["statut", "motif_rejet", "commentaire_rejet"])
         serializer = self.get_serializer(item)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["patch"], url_path="bulk-validate")
+    def bulk_validate(self, request):
+        id_import = request.data.get("id_import") or request.query_params.get("id_import")
+        item_ids = request.data.get("item_ids") or []
+        target_statut = str(request.data.get("statut") or "approuve").strip().lower()
+
+        if target_statut not in ("approuve", "rejete"):
+            return Response(
+                {"detail": "Le statut cible doit être 'approuve' ou 'rejete'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = self.get_queryset()
+        if id_import:
+            qs = qs.filter(id_import_id=id_import)
+        if item_ids:
+            qs = qs.filter(id_staging__in=item_ids)
+
+        if not qs.exists():
+            return Response({"detail": "Aucun article correspondant."}, status=status.HTTP_404_NOT_FOUND)
+
+        motif_rejet = str(request.data.get("motif_rejet") or "").strip()[:255]
+        commentaire_rejet = str(request.data.get("commentaire_rejet") or "").strip()
+
+        updated_count = 0
+        for item in qs:
+            payload = {"statut": target_statut}
+            if target_statut == "rejete":
+                payload.update({
+                    "motif_rejet": motif_rejet,
+                    "commentaire_rejet": commentaire_rejet,
+                })
+            serializer = self.get_serializer(item, data=payload, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            updated_count += 1
+
+        import_id = id_import
+        if not import_id:
+            first = qs.first()
+            import_id = first.id_import_id if first else None
+
+        if import_id:
+            remaining_pending = StagingItem.objects.filter(
+                id_import_id=import_id,
+                statut="en_attente",
+            ).exists()
+            if remaining_pending:
+                ImportExcelBC.objects.filter(pk=import_id).update(statut_import="en_revision")
+            elif target_statut == "approuve":
+                ImportExcelBC.objects.filter(pk=import_id).update(statut_import="valide")
+                import_obj = ImportExcelBC.objects.select_related("id_marche").get(pk=import_id)
+                marche = import_obj.id_marche
+                if marche and marche.statut != "receptionne_et_stocke":
+                    from .signals import _sync_marche_reference  # noqa: PLC0415
+                    _sync_marche_reference(marche, import_obj)
+                    marche.statut = "receptionne_et_stocke"
+                    marche.save(update_fields=["statut", "reference"])
+            else:
+                _VALID_IMPORT_REJECT_STATUTS = {"non_conforme", "autre"}
+                reject_statut = motif_rejet if motif_rejet in _VALID_IMPORT_REJECT_STATUTS else "autre"
+                ImportExcelBC.objects.filter(pk=import_id).update(statut_import=reject_statut)
+
+        return Response({"updated": updated_count}, status=status.HTTP_200_OK)
 
 # ---------------------------------------------------------------------------
 # 5. LotArticleViewSet
@@ -612,7 +852,7 @@ class LotArticleViewSet(viewsets.ReadOnlyModelViewSet):
         return [IsGestionnaireOrAdmin()]
 
     def get_queryset(self):
-        qs = LotArticle.objects.select_related("id_marche", "id_ressource").all()
+        qs = LotArticle.objects.select_related("id_marche", "id_ressource", "id_ressource__id_sous_categorie").all()
         if id_marche := self.request.query_params.get("id_marche"):
             qs = qs.filter(id_marche=id_marche)
         if id_ressource := self.request.query_params.get("id_ressource"):

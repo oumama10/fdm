@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from .models import RetourMateriel
 
@@ -28,6 +29,12 @@ class RetourMaterielSerializer(serializers.ModelSerializer):
     retourne_par = _UtilisateurBriefSerializer(
         source="id_retourne_par", read_only=True
     )
+    service_nom = serializers.SerializerMethodField()
+
+    def get_service_nom(self, obj):
+        if obj.id_retourne_par and obj.id_retourne_par.id_service:
+            return obj.id_retourne_par.id_service.nom_service
+        return None
 
     class Meta:
         model = RetourMateriel
@@ -35,6 +42,8 @@ class RetourMaterielSerializer(serializers.ModelSerializer):
             "id_retour",
             "date_retour",
             "motif_retour",
+            "statut",
+            "date_reception",
             "decision",
             "justification_decision",
             "observation",
@@ -44,6 +53,28 @@ class RetourMaterielSerializer(serializers.ModelSerializer):
             "instance_ressource",
             "id_retourne_par",
             "retourne_par",
+            "service_nom",
             "id_traite_par",
         ]
-        read_only_fields = ["id_retour", "date_retour", "id_retourne_par"]
+        read_only_fields = ["id_retour", "date_retour", "id_retourne_par", "statut", "date_reception"]
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if self.instance is None and user and getattr(user, "is_authenticated", False):
+            role = getattr(getattr(user, "id_role", None), "nom_role", None)
+            instance_ressource = attrs.get("id_instance_ressource")
+
+            if role == "chef_service":
+                if not instance_ressource:
+                    raise ValidationError({"id_instance_ressource": "Une instance est requise."})
+
+                service_id = getattr(getattr(user, "id_service", None), "id_service", None)
+                if service_id and instance_ressource.id_service_actuel_id != service_id:
+                    raise ValidationError({"id_instance_ressource": "L'article doit appartenir à votre service."})
+
+                if attrs.get("decision"):
+                    attrs["decision"] = ""
+
+        return attrs

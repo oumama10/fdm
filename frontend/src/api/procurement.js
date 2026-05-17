@@ -1,6 +1,6 @@
 import { apiClient } from './axios';
 
-export const getMarches = () => apiClient.get('/procurement/marches/');
+export const getMarches = (params = {}) => apiClient.get('/procurement/marches/', { params });
 export const createMarche = (data) => apiClient.post('/procurement/marches/', data);
 export const getMarcheDetail = (id) => apiClient.get(`/procurement/marches/${id}/`);
 export const uploadExcel = (formData) =>
@@ -12,8 +12,9 @@ export const uploadExcelDirect = (formData) =>
 		headers: { 'Content-Type': 'multipart/form-data' },
 	});
 export const createManualImport = (data) => apiClient.post('/procurement/import/manual/', data);
-export const getImports = () => apiClient.get('/procurement/import/');
+export const getImports = (params = {}) => apiClient.get('/procurement/import/', { params });
 export const getImportById = (importId) => apiClient.get(`/procurement/import/${importId}/`);
+export const updateImport = (importId, data) => apiClient.patch(`/procurement/import/${importId}/`, data);
 export const sendImportToGestionnaire = (importId) =>
 	apiClient.post(`/procurement/import/${importId}/envoyer-gestionnaire/`);
 export const getStagingItems = (importId) =>
@@ -21,10 +22,13 @@ export const getStagingItems = (importId) =>
 export const updateStagingItem = (itemId, data) =>
 	apiClient.patch(`/procurement/staging/${itemId}/`, data);
 export const approveItem = (itemId) => apiClient.post(`/procurement/staging/${itemId}/approve/`);
-export const rejectItem = (itemId) => apiClient.post(`/procurement/staging/${itemId}/reject/`);
+export const rejectItem = (itemId, data = {}) => apiClient.post(`/procurement/staging/${itemId}/reject/`, data);
+export const bulkValidateStaging = (data) => apiClient.patch('/procurement/staging/bulk-validate/', data);
 export const getEtapes = (marcheId) =>
 	apiClient.get('/procurement/etapes/', { params: { id_marche: marcheId } });
 export const updateEtape = (etapeId, data) => apiClient.patch(`/procurement/etapes/${etapeId}/`, data);
 export const getLotsByMarche = (marcheId) =>
 	apiClient.get('/procurement/lots/', { params: { id_marche: marcheId } });
 export const getLots = (params = {}) => apiClient.get('/procurement/lots/', { params });
+export const confirmerReception = (marcheId) =>
+	apiClient.post(`/procurement/marches/${marcheId}/confirmer-reception/`);

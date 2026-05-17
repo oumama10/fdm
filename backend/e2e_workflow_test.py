@@ -76,7 +76,7 @@ def setup_data():
     )
     Stock.objects.get_or_create(
         id_ressource=res,
-        defaults={"quantite_disponible": 100, "quantite_reservee": 0, "seuil_alerte": 5},
+        defaults={"quantite_disponible": 100, "seuil_alerte": 5},
     )
 
     marche = MarcheBC.objects.create(

@@ -1,270 +1,726 @@
-import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { getDemandeById, refuserDemande, validerDemande } from '../../api/requests';
+import { getDemandeById, validerDemande } from '../../api/requests';
 import { getInstances, getStock } from '../../api/resources';
-import DemandeRefuseModal from './DemandeRefuseModal';
+import { downloadDechargePdf } from '../../api/decharge';
+import DechargePrintModal from './DechargePrintModal';
 
-function Badge({ value, type }) {
-  const urgencyColors = {
-    normal: { bg: '#e5e7eb', color: '#111827' },
-    moyen: { bg: '#fcd34d', color: '#78350f' },
-    urgent: { bg: '#fecaca', color: '#991b1b' },
-  };
-  const statusColors = {
-    en_cours: { bg: '#dbeafe', color: '#1e3a8a' },
-    validee: { bg: '#bbf7d0', color: '#14532d' },
-    refusee: { bg: '#fecaca', color: '#991b1b' },
-    complete: { bg: '#99f6e4', color: '#134e4a' },
-    complete_avec_decharge: { bg: '#99f6e4', color: '#134e4a' },
-  };
+// ── Design tokens ──────────────────────────────────────────────────────────
+const T = {
+  blue:      '#0C447C',
+  lightBlue: '#1a7abf',
+  green:     '#16a34a',
+  orange:    '#f97316',
+  amber:     '#f59e0b',
+  red:       '#dc2626',
+  textDark:  '#0f172a',
+  textMid:   '#374151',
+  textMuted: '#64748b',
+  border:    '#e2e8f0',
+  bgWhite:   '#ffffff',
+  bgSubtle:  '#f8fafc',
+  radius:    12,
+  radiusSm:  8,
+  radiusXs:  6,
+};
 
-  const palette = type === 'urgence' ? urgencyColors : statusColors;
-  const tone = palette[value] || { bg: '#e5e7eb', color: '#374151' };
+// ── Helpers ───────────────────────────────────────────────────────────────
+const _id      = (d) => d.idDemande        ?? d.id_demande;
+const _ligneId = (l) => l.idLigne          ?? l.id_ligne;
+const _rid     = (l) => l.idRessource      ?? l.id_ressource;
+const _qd      = (l) => l.quantiteDemandee ?? l.quantite_demandee ?? 0;
+const _qa      = (l) => l.quantiteAccordee ?? l.quantite_accordee ?? 0;
+const _catNom  = (l) => l.ressource?.categorieNom ?? l.ressource?.categorie_nom ?? '';
+const _instId  = (i) => i.idInstance       ?? i.id_instance;
 
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+function fmtDateShort(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+function demandeRef(d) {
+  if (!d) return '';
+  const iso  = d.dateDemande ?? d.date_demande;
+  const year = iso ? new Date(iso).getFullYear() : new Date().getFullYear();
+  return `DEM-${year}-${String(_id(d)).padStart(4, '0')}`;
+}
+
+// 0% = red, 1–49% = amber, 50–99% = orange, 100% = green
+function availColor(pct) {
+  if (pct >= 100) return T.green;
+  if (pct >= 50)  return T.orange;
+  if (pct > 0)    return T.amber;
+  return T.red;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────
+// Badge display — all possible outcome values
+const STATUT_OPTIONS = [
+  { value: 'en_attente', label: 'En attente',             bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd' },
+  { value: 'en_cours',   label: 'En cours de traitement', bg: '#dbeafe', color: '#1e3a8a', border: '#bfdbfe' },
+  { value: 'partielle',  label: 'Partiellement traitée',  bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
+  { value: 'totale',     label: 'Totalement traitée',     bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
+  { value: 'refusee',    label: 'Refusée',                bg: '#fecaca', color: '#991b1b', border: '#fca5a5' },
+];
+
+
+const URGENCE_MAP = {
+  normal:  { label: 'Normal',  bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+  moyen:   { label: 'Moyen',   bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
+  urgent:  { label: 'Urgent',  bg: '#fff7ed', color: '#9a3412', border: '#fdba74' },
+  extreme: { label: 'Extrême', bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
+};
+
+// ── Atoms ─────────────────────────────────────────────────────────────────
+function InfoField({ label, value }) {
   return (
-    <span style={{ borderRadius: 999, padding: '4px 8px', background: tone.bg, color: tone.color, fontSize: 12, fontWeight: 600 }}>
-      {String(value || '').replaceAll('_', ' ')}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={{ fontSize: 13, fontWeight: 500, color: T.textMuted }}>{label}</span>
+      <div style={{
+        height: 42, padding: '0 14px', display: 'flex', alignItems: 'center',
+        border: `1px solid ${T.border}`, borderRadius: T.radiusSm,
+        fontSize: 14, color: T.textDark, background: T.bgWhite,
+      }}>
+        {value || '—'}
+      </div>
+    </div>
+  );
+}
+
+function AvailBar({ pct }) {
+  const color = availColor(pct);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0, marginLeft: 24 }}>
+      <span style={{ fontSize: 12, fontWeight: 600, color: T.textMuted }}>Disponibilité</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color, minWidth: 38, textAlign: 'right' }}>{pct}%</span>
+        <div style={{ width: 80, height: 8, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
+          <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: color, borderRadius: 4 }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, color }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={statLabelStyle}>{label}</span>
+      <span style={{ fontSize: 22, fontWeight: 700, color, lineHeight: '30px' }}>{value}</span>
+    </div>
+  );
+}
+
+function EtatBadge({ value }) {
+  const map = {
+    neuf:         { bg: '#dcfce7', color: '#14532d' },
+    bon_etat:     { bg: '#dbeafe', color: '#1e3a8a' },
+    usage_normal: { bg: '#fef9c3', color: '#713f12' },
+    endommage:    { bg: '#fee2e2', color: '#991b1b' },
+    hors_service: { bg: '#f3f4f6', color: '#6b7280' },
+  };
+  const t = map[value] || { bg: '#f3f4f6', color: '#6b7280' };
+  return (
+    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600, background: t.bg, color: t.color }}>
+      {(value ?? '—').replaceAll('_', ' ')}
     </span>
   );
 }
 
-function Progress({ value }) {
-  const pct = Math.max(0, Math.min(100, Number(value || 0)));
+// ── Consommable block ─────────────────────────────────────────────────────
+function ConsommableBlock({ ligne, stockMap, selection, onChange, readOnly }) {
+  const rid      = Number(_rid(ligne));
+  const dispo    = stockMap.get(rid) ?? 0;
+  const maxServe = Math.min(_qd(ligne), dispo);
+  const qa       = readOnly ? _qa(ligne) : (selection?.quantite_accordee ?? 0);
+
   return (
-    <div style={{ minWidth: 170 }}>
-      <div style={{ height: 8, background: '#e5e7eb', borderRadius: 999 }}>
-        <div style={{ height: 8, width: `${pct}%`, borderRadius: 999, background: '#2563eb' }} />
+    <div style={expandBodyStyle}>
+      <div style={{ display: 'flex', gap: 32, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <Stat label="Stock disponible" value={dispo} color={dispo > 0 ? T.green : T.red} />
+        <Stat label="Qté demandée" value={_qd(ligne)} color={T.textDark} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={statLabelStyle}>Qté à servir</span>
+          {readOnly ? (
+            <span style={{ fontSize: 22, fontWeight: 700, color: T.lightBlue, lineHeight: '30px' }}>{qa}</span>
+          ) : (
+            <input
+              type="number" min={0} max={maxServe} value={qa}
+              onChange={(e) => {
+                const v = Math.max(0, Math.min(Number(e.target.value), maxServe));
+                onChange({ quantite_accordee: v, instances: [] });
+              }}
+              style={{
+                width: 80, height: 38, textAlign: 'center',
+                fontSize: 15, fontWeight: 700, color: T.lightBlue,
+                border: `2px solid ${T.lightBlue}`, borderRadius: T.radiusXs,
+                outline: 'none', background: T.bgWhite,
+              }}
+            />
+          )}
+        </div>
       </div>
-      <div style={{ fontSize: 12, color: '#374151', marginTop: 4 }}>{pct}%</div>
+      {!readOnly && dispo === 0 && (
+        <p style={{ margin: '10px 0 0', fontSize: 13, color: T.red }}>
+          Aucun stock disponible — la quantité accordée sera 0.
+        </p>
+      )}
     </div>
   );
 }
 
-export default function DemandeDetailPage() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [showRefuseModal, setShowRefuseModal] = useState(false);
+// ── Bien-inventaire block ─────────────────────────────────────────────────
+function BienInventaireBlock({ ligne, selection, onChange, readOnly }) {
+  const rid    = _rid(ligne);
+  const maxQty = _qd(ligne);
 
-  const demandeQuery = useQuery({
-    queryKey: ['demandes', 'detail', id],
-    queryFn: () => getDemandeById(id),
+  const instancesQuery = useQuery({
+    queryKey: ['resources', 'instances', 'available', rid],
+    queryFn:  () => getInstances({ id_ressource: rid, statut: 'en_stock', etat__in: ['en_stock', 'retourne'] }),
+    enabled:  Boolean(rid) && !readOnly,
     staleTime: 30000,
   });
 
-  const stockQuery = useQuery({ queryKey: ['resources', 'stocks'], queryFn: getStock, staleTime: 30000 });
-  const instancesQuery = useQuery({ queryKey: ['resources', 'instances'], queryFn: getInstances, staleTime: 30000 });
+  const _instDate = (i) => i.dateAcquisition ?? i.dateAcquisitionDisplay ?? i.date_acquisition ?? i.date_acquisition_display;
 
-  const validateMutation = useMutation({
-    mutationFn: validerDemande,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['demandes', 'detail', id] });
-      queryClient.invalidateQueries({ queryKey: ['demandes', 'list'] });
-    },
-  });
+  const instances = [...(instancesQuery.data?.data || [])].sort((a, b) =>
+    new Date(_instDate(a) ?? 0) - new Date(_instDate(b) ?? 0)
+  );
 
-  const refuseMutation = useMutation({
-    mutationFn: ({ demandeId, commentaire }) => refuserDemande(demandeId, commentaire),
-    onSuccess: () => {
-      setShowRefuseModal(false);
-      queryClient.invalidateQueries({ queryKey: ['demandes', 'detail', id] });
-      queryClient.invalidateQueries({ queryKey: ['demandes', 'list'] });
-    },
-  });
+  const selectedIds = selection?.instances ?? [];
 
-  const demande = demandeQuery.data?.data;
-
-  const stockMap = useMemo(() => {
-    const map = new Map();
-    (stockQuery.data?.data || []).forEach((row) => {
-      map.set(Number(row.id_ressource), Number(row.quantite_disponible || 0));
-    });
-    return map;
-  }, [stockQuery.data?.data]);
-
-  const instanceCountMap = useMemo(() => {
-    const map = new Map();
-    (instancesQuery.data?.data || []).forEach((row) => {
-      if (row.statut === 'en_stock') {
-        const key = Number(row.id_ressource);
-        map.set(key, (map.get(key) || 0) + 1);
-      }
-    });
-    return map;
-  }, [instancesQuery.data?.data]);
-
-  const timeline = useMemo(() => {
-    if (!demande) return [];
-    const base = [
-      {
-        label: 'Demande soumise',
-        date: demande.date_demande,
-        status: 'en_cours',
-      },
-    ];
-
-    if (demande.statut === 'validee' && demande.date_validation) {
-      base.push({ label: 'Demande validée', date: demande.date_validation, status: 'validee' });
+  function toggle(instId) {
+    if (selectedIds.includes(instId)) {
+      const next = selectedIds.filter((x) => x !== instId);
+      onChange({ instances: next, quantite_accordee: next.length });
+    } else if (selectedIds.length < maxQty) {
+      const next = [...selectedIds, instId];
+      onChange({ instances: next, quantite_accordee: next.length });
     }
-    if (demande.statut === 'refusee') {
-      base.push({ label: 'Demande refusée', date: demande.date_validation || demande.date_demande, status: 'refusee' });
-    }
-    return base;
-  }, [demande]);
-
-  if (demandeQuery.isLoading) {
-    return <div style={{ height: 240, background: '#f3f4f6', borderRadius: 12 }} />;
   }
 
-  if (!demande) {
-    return <div style={{ color: '#b91c1c' }}>Demande introuvable.</div>;
+  if (readOnly) {
+    return (
+      <div style={expandBodyStyle}>
+        <span style={{ fontSize: 14, color: T.textMuted }}>
+          Instances affectées : <strong style={{ color: T.textDark }}>{_qa(ligne)}</strong>
+        </span>
+      </div>
+    );
   }
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ margin: 0 }}>Demande #{demande.id_demande}</h1>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Badge type="urgence" value={demande.urgence} />
-            <Badge type="statut" value={demande.statut} />
-          </div>
-        </div>
-        <div style={{ marginTop: 8, color: '#374151', fontSize: 14 }}>
-          Demandeur: <strong>{demande.chef_demandeur?.nom_complet || '—'}</strong>
-          {' · '}
-          Service: <strong>{demande.service?.nom_service || '—'}</strong>
-          {' · '}
-          Date: <strong>{demande.date_demande ? new Date(demande.date_demande).toLocaleString('fr-FR') : '—'}</strong>
-        </div>
+    <div style={expandBodyStyle}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: selectedIds.length === maxQty ? T.green : T.lightBlue }}>
+          {selectedIds.length} / {maxQty} sélectionnée{maxQty > 1 ? 's' : ''}
+        </span>
       </div>
 
-      <section style={sectionStyle}>
-        <h3 style={{ marginTop: 0, marginBottom: 10 }}>Lignes de demande</h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead>
-            <tr style={{ background: '#f9fafb', textAlign: 'left' }}>
-              <th style={thStyle}>Article</th>
-              <th style={thStyle}>Catégorie</th>
-              <th style={thStyle}>Qté demandée</th>
-              <th style={thStyle}>Disponibilité</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(demande.lignes || []).map((ligne) => {
-              const isCons = ligne.ressource?.categorie_nom === 'Consommable';
-              const stockNow = isCons
-                ? stockMap.get(Number(ligne.id_ressource)) || 0
-                : instanceCountMap.get(Number(ligne.id_ressource)) || 0;
+      {instancesQuery.isLoading && (
+        <div style={{ padding: '10px 0', fontSize: 13, color: T.textMuted }}>Chargement…</div>
+      )}
+      {!instancesQuery.isLoading && instances.length === 0 && (
+        <div style={{ padding: '10px 0', fontSize: 13, color: T.red }}>Aucune instance disponible en stock.</div>
+      )}
 
-              return (
-                <tr key={ligne.id_ligne} style={{ borderTop: '1px solid #f3f4f6' }}>
-                  <td style={tdStyle}>{ligne.ressource?.designation || '—'}</td>
-                  <td style={tdStyle}>{ligne.ressource?.categorie_nom || '—'}</td>
-                  <td style={tdStyle}>{ligne.quantite_demandee}</td>
-                  <td style={tdStyle}>
-                    <div style={{ display: 'grid', gap: 2 }}>
-                      <Progress value={ligne.disponibilite_pct} />
-                      <span style={{ fontSize: 12, color: '#6b7280' }}>
-                        Stock actuel: ({stockNow})
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </section>
-
-      {demande.statut === 'en_cours' ? (
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button
-            style={greenButton}
-            onClick={() => validateMutation.mutate(demande.id_demande)}
-            disabled={validateMutation.isPending}
-          >
-            {validateMutation.isPending ? 'Validation...' : 'Valider la demande'}
-          </button>
-          <button style={redButton} onClick={() => setShowRefuseModal(true)}>
-            Refuser
-          </button>
+      {instances.length > 0 && (
+        <div style={{ overflowX: 'auto', borderRadius: T.radiusSm, border: `1px solid ${T.border}` }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: T.bgSubtle }}>
+                {['', 'N° Inventaire', 'Date acquisition', 'État', 'Observation'].map((h) => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {instances.map((inst) => {
+                const instId  = _instId(inst);
+                const checked = selectedIds.includes(instId);
+                const blocked = !checked && selectedIds.length >= maxQty;
+                return (
+                  <tr
+                    key={instId}
+                    onClick={() => !blocked && toggle(instId)}
+                    style={{
+                      borderTop: `1px solid ${T.border}`,
+                      background: checked ? '#eff6ff' : T.bgWhite,
+                      cursor: blocked ? 'not-allowed' : 'pointer',
+                      opacity: blocked ? 0.4 : 1,
+                    }}
+                  >
+                    <td style={{ ...tdStyle, width: 40 }}>
+                      <input
+                        type="checkbox" checked={checked} disabled={blocked}
+                        onChange={() => toggle(instId)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ width: 16, height: 16, cursor: blocked ? 'not-allowed' : 'pointer' }}
+                      />
+                    </td>
+                    <td style={{ ...tdStyle, fontWeight: 600, fontFamily: 'monospace', color: T.textDark }}>
+                      {inst.numeroInventaire ?? inst.numero_inventaire ?? '—'}
+                    </td>
+                    <td style={tdStyle}>{fmtDateShort(_instDate(inst))}</td>
+                    <td style={tdStyle}><EtatBadge value={inst.etat} /></td>
+                    <td style={{ ...tdStyle, color: T.textMuted }}>{inst.observation ?? '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      ) : null}
-
-      {demande.statut === 'validee' ? (
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            style={primaryButton}
-            onClick={() => navigate(`/gestionnaire/decharges/creer/${demande.id_demande}`)}
-          >
-            Créer la décharge
-          </button>
-        </div>
-      ) : null}
-
-      <section style={sectionStyle}>
-        <h3 style={{ marginTop: 0, marginBottom: 10 }}>Historique statut</h3>
-        <ul style={{ margin: 0, paddingLeft: 18 }}>
-          {timeline.map((item, index) => (
-            <li key={`${item.label}-${index}`} style={{ marginBottom: 8 }}>
-              <strong>{item.label}</strong>
-              <div style={{ fontSize: 13, color: '#6b7280' }}>
-                {item.date ? new Date(item.date).toLocaleString('fr-FR') : '—'}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {showRefuseModal ? (
-        <DemandeRefuseModal
-          onClose={() => setShowRefuseModal(false)}
-          onSubmit={(commentaire) =>
-            refuseMutation.mutate({ demandeId: demande.id_demande, commentaire })
-          }
-          isSubmitting={refuseMutation.isPending}
-        />
-      ) : null}
+      )}
     </div>
   );
 }
 
-const sectionStyle = {
-  border: '1px solid #e5e7eb',
-  borderRadius: 12,
-  background: '#fff',
-  padding: 12,
+// ── Statut auto-compute ───────────────────────────────────────────────────
+function computeStatutFromSelections(lignes, selections) {
+  if (!lignes || lignes.length === 0) return 'en_cours';
+  let totalDemande = 0;
+  let totalServi   = 0;
+  for (const ligne of lignes) {
+    const lid = _ligneId(ligne);
+    const sel = selections[lid];
+    totalDemande += _qd(ligne);
+    totalServi   += sel?.quantite_accordee ?? 0;
+  }
+  if (totalServi === 0) return 'en_cours';
+  if (totalServi >= totalDemande) return 'totale';
+  return 'partielle';
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────
+export default function DemandeDetailPage() {
+  const { id }      = useParams();
+  const queryClient = useQueryClient();
+
+  const [isEditing,        setIsEditing]        = useState(false);
+  const [selectedStatut,   setSelectedStatut]   = useState('');
+  const [motifRefus,       setMotifRefus]       = useState('');
+  const [selections,       setSelections]       = useState({});
+  const [expandedLines,    setExpandedLines]    = useState(new Set());
+  const [createdDechargeId, setCreatedDechargeId] = useState(null);
+  const [showPrintModal,   setShowPrintModal]   = useState(false);
+
+  function updateSelection(ligneId, patch) {
+    setSelections((prev) => ({ ...prev, [ligneId]: { ...(prev[ligneId] || {}), ...patch } }));
+  }
+
+  function toggleLine(ligneId) {
+    setExpandedLines((prev) => {
+      const next = new Set(prev);
+      next.has(ligneId) ? next.delete(ligneId) : next.add(ligneId);
+      return next;
+    });
+  }
+
+  // ── Queries ───────────────────────────────────────────────────────────────
+  const demandeQuery = useQuery({
+    queryKey: ['demandes', 'detail', id],
+    queryFn:  () => getDemandeById(id),
+    staleTime: 30000,
+  });
+  const stockQuery = useQuery({
+    queryKey: ['resources', 'stocks'],
+    queryFn:  getStock,
+    staleTime: 30000,
+  });
+
+  const demande  = demandeQuery.data?.data;
+  const stockMap = new Map(
+    (stockQuery.data?.data || []).map((r) => [
+      Number(r.idRessource ?? r.id_ressource),
+      Number(r.quantiteDisponible ?? r.quantite_disponible ?? 0),
+    ])
+  );
+
+  // Auto-compute statut from instance/qty selections whenever edit mode is active.
+  // Uses functional setState so 'refusee' (manual user choice) is never overridden.
+  useEffect(() => {
+    if (!isEditing || !demande?.lignes) return;
+    setSelectedStatut((current) => {
+      if (current === 'refusee') return current;
+      return computeStatutFromSelections(demande.lignes, selections);
+    });
+  }, [isEditing, selections, demande?.lignes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
+  const validateMutation = useMutation({
+    mutationFn: ({ demandeId, data }) => validerDemande(demandeId, data),
+    onSuccess: (response) => {
+      const did = response.data?.dechargeId ?? response.data?.decharge_id ?? null;
+      if (did) setCreatedDechargeId(did);
+      setIsEditing(false);
+      queryClient.invalidateQueries({ queryKey: ['demandes', 'detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['demandes', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['resources', 'stocks'] });
+      queryClient.invalidateQueries({ queryKey: ['resources', 'instances'] });
+      queryClient.invalidateQueries({ queryKey: ['decharge', 'list'] });
+    },
+  });
+
+  function handleSave() {
+    if (!demande) return;
+    let decision;
+    if (selectedStatut === 'refusee')   decision = 'refus';
+    else if (selectedStatut === 'totale') decision = 'total';
+    else                                  decision = 'partiel';
+
+    const lignesData = (demande.lignes || []).map((ligne) => {
+      const lid = _ligneId(ligne);
+      const sel = selections[lid] || { quantite_accordee: 0, instances: [] };
+      return { id_ligne: lid, quantite_accordee: sel.quantite_accordee ?? 0, instances: sel.instances ?? [] };
+    });
+
+    validateMutation.mutate({
+      demandeId: _id(demande),
+      data: {
+        decision,
+        lignes: lignesData,
+        commentaire_validation: motifRefus,
+        motif_refus: motifRefus,
+      },
+    });
+  }
+
+  function handleStartEdit() {
+    setSelections({});
+    setExpandedLines(new Set());
+    setSelectedStatut('en_cours');
+    setMotifRefus(demande.motifRefus ?? demande.motif_refus ?? '');
+    setCreatedDechargeId(null);
+    setIsEditing(true);
+  }
+
+  function handleCancelEdit() {
+    setExpandedLines(new Set());
+    setIsEditing(false);
+    // Reset to the server value so the badge stays correct after cancel.
+    setSelectedStatut(demande?.statut || 'en_cours');
+    setMotifRefus(demande?.motifRefus ?? demande?.motif_refus ?? '');
+  }
+
+  // ── Guards ────────────────────────────────────────────────────────────────
+  if (demandeQuery.isLoading) {
+    return <div style={{ padding: '32px 0', color: T.textMuted, fontSize: 14 }}>Chargement…</div>;
+  }
+  if (!demande) {
+    return <div style={{ color: T.red, padding: 24, fontSize: 14 }}>Demande introuvable.</div>;
+  }
+
+  const isEditable    = ['en_attente', 'en_cours', 'refusee'].includes(demande.statut);
+  const firstLigne    = (demande.lignes || [])[0];
+  const categorieName = firstLigne?.ressource?.categorieMetierNom
+    ?? firstLigne?.ressource?.categorie_metier_nom
+    ?? firstLigne?.ressource?.categorieNom
+    ?? firstLigne?.ressource?.categorie_nom ?? '—';
+  const sousCatName   = firstLigne?.ressource?.sousCategorieNom
+    ?? firstLigne?.ressource?.sous_categorie_nom ?? '—';
+
+  // Badge always tracks the server value; select tracks the in-flight edit value.
+  const displayStatut    = isEditing ? selectedStatut : (demande.statut || 'en_cours');
+  const currentStatutOpt = STATUT_OPTIONS.find((o) => o.value === displayStatut) || STATUT_OPTIONS[0];
+  const urgenceStyle     = URGENCE_MAP[demande.urgence] || URGENCE_MAP.normal;
+  const isPending        = validateMutation.isPending;
+  const saveDisabled = !isEditing || isPending || selectedStatut === 'en_cours'
+    || (selectedStatut === 'refusee' && !motifRefus.trim());
+  const canExpand  = isEditing;
+  const dechargeId = createdDechargeId ?? demande.decharge_id ?? demande.dechargeId ?? null;
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return (
+    <div style={pageStyle}>
+
+      {/* ── Header ── */}
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20, color: T.blue }}>&#9641;</span>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: T.blue }}>
+              Détails de la Demande
+            </h1>
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 600, color: T.lightBlue }}>
+            # Référence : {demandeRef(demande)}
+          </span>
+        </div>
+        <div style={{ height: 3, background: T.lightBlue, borderRadius: 2, margin: '0 -24px' }} />
+      </div>
+
+      {/* ── Décharge auto-créée ── */}
+      {createdDechargeId && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 20px', borderRadius: T.radiusSm,
+          background: '#f0fdf4', border: '1px solid #86efac',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 18, color: T.green }}>✓</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#14532d' }}>
+              Demande traitée — une décharge a été générée automatiquement.
+            </span>
+          </div>
+          <Link
+            to={`/gestionnaire/decharges/${createdDechargeId}`}
+            style={{
+              fontSize: 13, fontWeight: 600, color: T.green,
+              textDecoration: 'none', whiteSpace: 'nowrap',
+              padding: '6px 14px', border: `1px solid ${T.green}`,
+              borderRadius: T.radiusSm, background: T.bgWhite,
+            }}
+          >
+            Voir la décharge →
+          </Link>
+        </div>
+      )}
+
+      {/* ── Info grid ── */}
+      <div style={card}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <InfoField label="Demandeur"
+            value={demande.chefDemandeur?.nomComplet ?? demande.chef_demandeur?.nom_complet} />
+          <InfoField label="Date de demande"
+            value={fmtDate(demande.dateDemande ?? demande.date_demande)} />
+          <InfoField label="Catégorie"      value={categorieName} />
+          <InfoField label="Sous-Catégorie" value={sousCatName}   />
+        </div>
+      </div>
+
+      {/* ── Articles demandés ── */}
+      <div style={card}>
+        <h3 style={sectionTitle}>Articles demandés</h3>
+        <div style={{ display: 'grid', gap: 12, marginTop: 14 }}>
+          {(demande.lignes || []).map((ligne) => {
+            const lid      = _ligneId(ligne);
+            const rid      = _rid(ligne);
+            const isCons   = _catNom(ligne) === 'Consommable';
+            const pct      = Number(ligne.disponibilitePct ?? ligne.disponibilite_pct ?? 0);
+            const ref      = ligne.ressource?.reference ?? `ART-${String(rid).padStart(3, '0')}`;
+            const expanded = expandedLines.has(lid);
+
+            return (
+              <div
+                key={lid}
+                style={{
+                  ...articleCard,
+                  borderColor: canExpand && expanded ? T.lightBlue : T.border,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                    cursor: canExpand ? 'pointer' : 'default',
+                    userSelect: 'none',
+                  }}
+                  onClick={() => canExpand && toggleLine(lid)}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: T.textDark }}>
+                      {ligne.ressource?.designation || '—'}
+                    </div>
+                    <div style={{ fontSize: 13, color: T.textMuted, marginTop: 4 }}>Référence : {ref}</div>
+                    <div style={{ fontSize: 13, color: T.textMuted, marginTop: 2 }}>
+                      Qté demandée : <strong style={{ color: T.textMid }}>{_qd(ligne)}</strong>
+                    </div>
+                  </div>
+                  <AvailBar pct={pct} />
+                </div>
+
+                {expanded && (
+                  isCons
+                    ? <ConsommableBlock ligne={ligne} stockMap={stockMap} selection={selections[lid]} onChange={(p) => updateSelection(lid, p)} readOnly={!isEditing} />
+                    : <BienInventaireBlock ligne={ligne} selection={selections[lid]} onChange={(p) => updateSelection(lid, p)} readOnly={!isEditing} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Justification + Urgence ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+        <div style={card}>
+          <h3 style={sectionTitle}>Justification / Commentaires</h3>
+          <div style={textareaDisplay}>{demande.justification || '—'}</div>
+        </div>
+        <div style={{ ...card, padding: '12px 16px', display: 'flex', flexDirection: 'column', alignSelf: 'flex-start', gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Urgence
+          </span>
+          <span style={{
+            alignSelf: 'flex-start',
+            fontSize: 13, fontWeight: 600,
+            padding: '5px 14px', borderRadius: 999,
+            background: urgenceStyle.bg,
+            color: urgenceStyle.color,
+            border: `1px solid ${urgenceStyle.border}`,
+          }}>
+            {urgenceStyle.label}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Statut de la demande ── */}
+      <div style={card}>
+        <h3 style={sectionTitle}>Statut de la demande</h3>
+        <div style={{ marginTop: 14 }}>
+          {isEditing ? (
+            <>
+              <select
+                value={selectedStatut}
+                onChange={(e) => setSelectedStatut(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: T.radiusSm,
+                  border: `1px solid ${currentStatutOpt.border}`,
+                  fontSize: 14, fontWeight: 600,
+                  color: currentStatutOpt.color,
+                  background: currentStatutOpt.bg,
+                  outline: 'none', cursor: 'pointer',
+                  minWidth: 240,
+                }}
+              >
+                {STATUT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+
+              {selectedStatut === 'refusee' && (
+                <div style={{ marginTop: 16 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: T.textMuted, display: 'block', marginBottom: 6 }}>
+                    Motif du refus *
+                  </span>
+                  <textarea
+                    value={motifRefus}
+                    onChange={(e) => setMotifRefus(e.target.value)}
+                    rows={3}
+                    placeholder="Expliquer la raison du refus…"
+                    style={{
+                      width: '100%', boxSizing: 'border-box',
+                      padding: '10px 14px',
+                      border: `1px solid ${T.border}`, borderRadius: T.radiusSm,
+                      fontSize: 14, color: T.textDark,
+                      resize: 'vertical', outline: 'none',
+                      fontFamily: 'inherit', lineHeight: '20px',
+                    }}
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center',
+              padding: '5px 14px', borderRadius: 999,
+              fontSize: 13, fontWeight: 600,
+              background: currentStatutOpt.bg,
+              color: currentStatutOpt.color,
+              border: `1px solid ${currentStatutOpt.border}`,
+            }}>
+              {currentStatutOpt.label}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Footer ── */}
+      <div style={footerRow}>
+        {validateMutation.isError && (
+          <span style={{ fontSize: 13, color: T.red, fontWeight: 500 }}>
+            {validateMutation.error?.response?.data?.detail || "Erreur lors de l'opération."}
+          </span>
+        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
+
+          <button
+            style={{ ...btnOutline, opacity: dechargeId ? 1 : 0.4, cursor: dechargeId ? 'pointer' : 'not-allowed' }}
+            disabled={!dechargeId}
+            onClick={() => dechargeId && setShowPrintModal(true)}
+            title={dechargeId ? 'Télécharger la décharge PDF' : 'Aucune décharge disponible'}
+          >
+            &#9113; Télécharger décharge
+          </button>
+
+          <button
+            style={isEditing ? btnAmber : btnOutline}
+            onClick={isEditing ? handleCancelEdit : handleStartEdit}
+            disabled={isPending || (!isEditing && !isEditable)}
+            title={!isEditable && !isEditing ? 'Cette demande est déjà traitée' : undefined}
+          >
+            &#9998; {isEditing ? 'Annuler' : 'Modifier'}
+          </button>
+
+          <button
+            style={{ ...btnPrimary, opacity: saveDisabled ? 0.4 : 1, cursor: saveDisabled ? 'not-allowed' : 'pointer' }}
+            onClick={handleSave}
+            disabled={saveDisabled}
+          >
+            {isPending ? 'Enregistrement…' : '✓ Enregistrer'}
+          </button>
+        </div>
+      </div>
+
+      {showPrintModal && dechargeId && (
+        <DechargePrintModal
+          dechargeId={dechargeId}
+          onClose={() => setShowPrintModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────
+const pageStyle      = { display: 'grid', gap: 16, paddingBottom: 40 };
+const card           = { background: T.bgWhite, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: '20px 24px' };
+const sectionTitle   = { margin: 0, fontSize: 15, fontWeight: 600, color: T.textDark };
+const statLabelStyle = { fontSize: 12, fontWeight: 500, color: T.textMuted };
+
+const articleCard = {
+  border: `1px solid ${T.border}`,
+  borderRadius: T.radiusSm,
+  background: T.bgWhite,
+  padding: '14px 18px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 0,
+  transition: 'border-color 0.15s',
 };
 
-const thStyle = { padding: 10, fontWeight: 600 };
-const tdStyle = { padding: 10 };
-
-const primaryButton = {
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#111827',
-  color: '#fff',
-  cursor: 'pointer',
+const expandBodyStyle = {
+  marginTop: 14,
+  paddingTop: 14,
+  borderTop: `1px solid ${T.border}`,
 };
 
-const greenButton = {
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#16a34a',
-  color: '#fff',
-  cursor: 'pointer',
+const textareaDisplay = {
+  marginTop: 14,
+  padding: '10px 14px',
+  border: `1px solid ${T.border}`,
+  borderRadius: T.radiusSm,
+  minHeight: 88,
+  fontSize: 14,
+  color: T.textDark,
+  background: T.bgSubtle,
+  whiteSpace: 'pre-wrap',
+  lineHeight: '20px',
 };
 
-const redButton = {
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 12px',
-  background: '#dc2626',
-  color: '#fff',
-  cursor: 'pointer',
+const footerRow = { display: 'flex', alignItems: 'center', gap: 10, paddingTop: 4 };
+
+const thStyle = {
+  padding: '9px 12px', fontSize: 12, fontWeight: 600,
+  color: T.textMuted, textAlign: 'left', borderBottom: `1px solid ${T.border}`,
 };
+const tdStyle = { padding: '10px 12px', fontSize: 13, color: T.textMid, verticalAlign: 'middle' };
+
+const btnBase    = { border: 'none', borderRadius: T.radiusSm, padding: '9px 18px', fontSize: 14, fontWeight: 600, cursor: 'pointer', lineHeight: '20px' };
+const btnOutline = { ...btnBase, border: `1px solid ${T.border}`, background: T.bgWhite, color: T.textMuted };
+const btnAmber   = { ...btnBase, border: '1px solid #fcd34d', background: '#fffbeb', color: '#92400e' };
+const btnPrimary = { ...btnBase, background: T.lightBlue, color: '#fff' };

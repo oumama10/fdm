@@ -30,6 +30,15 @@ class _RessourceBriefSerializer(serializers.Serializer):
     id_ressource = serializers.IntegerField()
     designation = serializers.CharField()
     unite_mesure = serializers.CharField()
+    is_consommable = serializers.SerializerMethodField()
+    categorie = serializers.SerializerMethodField()
+
+    def get_is_consommable(self, obj):
+        return obj.is_consommable
+
+    def get_categorie(self, obj):
+        sc = obj.id_sous_categorie
+        return sc.nom_sous_categorie if sc else None
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +79,7 @@ class MarcheBCSerializer(serializers.ModelSerializer):
             "id_marche",
             "reference",
             "type_acquisition",
+            "source",
             "date_creation",
             "delai_reception_jours",
             "date_livraison_prevue",
@@ -80,6 +90,10 @@ class MarcheBCSerializer(serializers.ModelSerializer):
             "id_cree_par",
             "etapes",
             "import_excel",
+            "type_donateur",
+            "nom_donateur",
+            "organisme_donateur",
+            "contact_donateur",
         ]
         read_only_fields = [
             "id_marche",
@@ -153,6 +167,7 @@ class ImportExcelBCStatusSerializer(serializers.ModelSerializer):
             "id_import",
             "id_marche",
             "titre_fichier",
+            "date_import",
             "reference_document",
             "fournisseur_denomination",
             "fournisseur_telephone",
@@ -202,39 +217,30 @@ class StagingItemSerializer(serializers.ModelSerializer):
             "description",
             "designation_normalisee",
             "quantite",
-            "confiance_ia",
+            "type_detecte",
             "statut",
             "correction_gestionnaire",
+            "motif_rejet",
+            "commentaire_rejet",
             "prix_unitaire_ht",
             "prix_total_ht",
             "unite",
             "id_import",
             "id_categorie_suggeree",
+            "id_sous_categorie_suggeree",
             "id_ressource_liee",
             "needs_review",
         ]
         read_only_fields = [
             "id_staging",
             "designation_brute",
-            "confiance_ia",
             "id_import",
             "needs_review",
         ]
 
     def validate(self, attrs):
-        # When the incoming update sets statut → 'approuve', the normalised
-        # designation must already exist on the instance or be supplied now.
         incoming_statut = attrs.get("statut")
         if incoming_statut == "approuve":
-            if not self.instance or not self.instance.id_ressource_liee:
-                raise serializers.ValidationError(
-                    {
-                        "id_ressource_liee": (
-                            "Vous devez lier une ressource existante avant d'approuver."
-                        )
-                    }
-                )
-            # Check the value being written, then fall back to current instance
             designation = attrs.get("designation_normalisee")
             if not designation and self.instance:
                 designation = self.instance.designation_normalisee

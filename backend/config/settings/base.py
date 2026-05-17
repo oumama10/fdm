@@ -97,6 +97,9 @@ DATABASES = {
 	),
 }
 
+if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
+	DATABASES["default"].setdefault("OPTIONS", {})["timeout"] = 20
+
 
 AUTH_PASSWORD_VALIDATORS = [
 	{
@@ -159,6 +162,16 @@ REST_FRAMEWORK = {
 		"djangorestframework_camel_case.parser.CamelCaseMultiPartParser",
 	),
 	"DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+	"DEFAULT_THROTTLE_CLASSES": [
+		"rest_framework.throttling.AnonRateThrottle",
+		"rest_framework.throttling.UserRateThrottle",
+	],
+	"DEFAULT_THROTTLE_RATES": {
+		"anon": "10/min",
+		"user": "300/min",
+		"login": "10/min",
+		"upload": "5/min",
+	},
 }
 
 
@@ -208,5 +221,9 @@ DECHARGE_TEMPLATE_PATH = env(
 	default=BASE_DIR / "templates" / "decharge" / "decharge_template.xlsx",
 )
 
-OPENROUTER_API_KEY = env("OPENROUTER_API_KEY", default="")
-OPENROUTER_MODEL = env("OPENROUTER_MODEL", default="openai/gpt-4o-mini")
+# Directory containing logo PNGs for the décharge PDF header.
+# Place logo_left.png, logo_center.png, logo_right.png here.
+DECHARGE_LOGO_DIR = env(
+	"DECHARGE_LOGO_DIR",
+	default=str(BASE_DIR / "static" / "decharge"),
+)

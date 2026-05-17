@@ -5,20 +5,26 @@ class RetourMateriel(models.Model):
     MOTIF_CHOICES = [
         ("panne", "panne"),
         ("inutilise", "inutilise"),
-        ("endommage", "endommage"),
-        ("autre", "autre"),
     ]
     DECISION_CHOICES = [
         ("", ""),
+        ("hors_service", "hors_service"),
+        ("en_stock", "en_stock"),
         ("repare", "repare"),
         ("non_repare", "non_repare"),
         ("rebut", "rebut"),
         ("reaffecte", "reaffecte"),
     ]
+    STATUT_CHOICES = [
+        ("en_attente", "en_attente"),
+        ("receptionne", "receptionne"),
+    ]
 
     id_retour = models.AutoField(primary_key=True)
     date_retour = models.DateField(auto_now_add=True)
     motif_retour = models.CharField(max_length=20, choices=MOTIF_CHOICES)
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="en_attente", db_index=True)
+    date_reception = models.DateTimeField(null=True, blank=True)
     decision = models.CharField(max_length=20, choices=DECISION_CHOICES, default="", blank=True)
     justification_decision = models.TextField(blank=True)
     observation = models.TextField(blank=True)

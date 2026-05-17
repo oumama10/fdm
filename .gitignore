@@ -32,13 +32,15 @@ env/
 ENV/
 
 # Django / backend runtime artifacts
-backend/db.sqlite3
-backend/*.sqlite3
+*.sqlite3
 backend/media/
 backend/staticfiles/
 backend/logs/
 backend/**/migrations/*__pycache__/
 backend/**/__pycache__/
+
+# Uploaded media files — logos can be committed if needed
+media/uploads/
 
 # Node / frontend
 node_modules/
@@ -60,3 +62,8 @@ coverage/
 *.tmp
 *.temp
 *.bak
+backend/test_*.py 
+backend/tmp_*.py 
+test_*.py 
+backend/fix_*.py 
+.claude/ 

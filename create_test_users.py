@@ -57,7 +57,7 @@ for email, password, nom_complet, role_name in users_data:
         id_service=service if role_name != "fournisseur" else None,
         is_staff=(role_name == "admin")
     )
-    print(f"✓ {role_name.upper()}")
+    print(f"[OK] {role_name.upper()}")
     print(f"  Email:    {email}")
     print(f"  Password: {password}")
     print(f"  Name:     {nom_complet}\n")

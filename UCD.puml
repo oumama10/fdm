@@ -1,0 +1,197 @@
+@startuml UCD_FMPDF
+title FMPDF — Diagramme de Cas d'Utilisation
+
+skinparam usecase {
+  BackgroundColor #F0F9FF
+  BorderColor     #2563EB
+  ArrowColor      #1E40AF
+}
+skinparam actor {
+  BackgroundColor #EFF6FF
+  BorderColor     #2563EB
+}
+skinparam packageStyle rectangle
+skinparam linetype ortho
+left to right direction
+
+' ══════════════════════════════════════════════════════
+' ACTEURS
+' ══════════════════════════════════════════════════════
+actor "Gestionnaire\nMagasin"  as GM
+actor "Chef de\nService"       as CS
+actor "Service\nFinancière"    as SF
+actor "Fournisseur"            as FO
+actor "Administrateur"         as AD
+
+' ══════════════════════════════════════════════════════
+' PHASE : ENTRÉES — ACQUISITION
+' ══════════════════════════════════════════════════════
+rectangle "Entrées — Acquisition" #FEF9FF {
+  usecase "Créer marché / BC / Don manuellement"   as UC_M1
+  usecase "Importer PDF / Excel (OCR)"              as UC_M2
+  usecase "Réviser données extraites"               as UC_M3
+  usecase "Approuver un article staging"            as UC_M4
+  usecase "Rejeter un article staging"              as UC_M5
+  usecase "Validation groupée des articles"         as UC_M6
+  usecase "Confirmer réception marché"              as UC_M7
+  usecase "Consulter marchés / BC / Dons"           as UC_M8
+  usecase "Consulter détail d'un marché"            as UC_M9
+  usecase "Consulter lots d'articles livrés"        as UC_M10
+  usecase "Consulter étapes d'un marché"            as UC_M11
+}
+
+' ══════════════════════════════════════════════════════
+' PHASE : SORTIES — DEMANDES & DÉCHARGES
+' ══════════════════════════════════════════════════════
+rectangle "Sorties — Demandes & Décharges" #F0FFF4 {
+  usecase "Soumettre une demande"                   as UC_D1
+  usecase "Consulter ses demandes"                  as UC_D2
+  usecase "Valider une demande"                     as UC_D3
+  usecase "Refuser une demande"                     as UC_D4
+  usecase "Générer une décharge"                    as UC_D5
+  usecase "Télécharger PDF décharge"                as UC_D6
+  usecase "Consulter types de décharges"            as UC_D7
+  usecase "Marquer décharge signée directement"     as UC_D11
+  usecase "Consulter détail signature"              as UC_D12
+}
+
+' ══════════════════════════════════════════════════════
+' PHASE : SUIVI — STOCK & RETOURS
+' ══════════════════════════════════════════════════════
+rectangle "Suivi — Stock & Retours" #FFFBEB {
+  usecase "Consulter stocks consommables"           as UC_S1
+  usecase "Définir seuil d'alerte stock"            as UC_S2
+  usecase "Consulter inventaire biens"              as UC_S3
+  usecase "Consulter mouvements de stock"           as UC_S4
+  usecase "Consulter résumé du stock"               as UC_S5
+  usecase "Gérer catégories / sous-catégories"      as UC_S6
+  usecase "Gérer ressources"                        as UC_S7
+  usecase "Créer un retour de matériel"             as UC_R1
+  usecase "Consulter retours"                       as UC_R2
+  usecase "Réceptionner un retour"                  as UC_R3
+  usecase "Appliquer décision de retour"            as UC_R4
+}
+
+' ══════════════════════════════════════════════════════
+' PHASE : STATISTIQUES & REPORTING
+' ══════════════════════════════════════════════════════
+rectangle "Statistiques & Reporting" #F0F9FF {
+  usecase "Tableau de bord global"                  as UC_REP1
+  usecase "Rapport stock instantané"                as UC_REP2
+  usecase "Rapport stock périodique"                as UC_REP3
+  usecase "Bilan annuel des achats"                 as UC_REP4
+  usecase "Statistiques des achats"                 as UC_REP5
+}
+
+' ══════════════════════════════════════════════════════
+' NOTIFICATIONS
+' ══════════════════════════════════════════════════════
+rectangle "Notifications" #F8FAFC {
+  usecase "Consulter notifications"                 as UC_N1
+  usecase "Nombre de non-lues"                      as UC_N2
+  usecase "Marquer lue / tout lire"                 as UC_N3
+  usecase "Consulter alertes délai marché"          as UC_N4
+}
+
+' ══════════════════════════════════════════════════════
+' ADMINISTRATION
+' ══════════════════════════════════════════════════════
+rectangle "Administration" #FFF1F2 {
+  usecase "Gérer utilisateurs"                      as UC_A1
+  usecase "Gérer services"                          as UC_A2
+  usecase "Gérer fournisseurs"                      as UC_A3
+  usecase "Consulter journal d'audit"               as UC_A4
+}
+
+' ══════════════════════════════════════════════════════
+' ASSOCIATIONS — Gestionnaire Magasin
+' ══════════════════════════════════════════════════════
+GM --> UC_M3
+GM --> UC_M4
+GM --> UC_M5
+GM --> UC_M6
+GM --> UC_M7
+GM --> UC_M8
+GM --> UC_M9
+GM --> UC_M10
+GM --> UC_M11
+GM --> UC_D3
+GM --> UC_D4
+GM --> UC_D5
+GM --> UC_D6
+GM --> UC_D7
+GM --> UC_D11
+GM --> UC_D12
+GM --> UC_S1
+GM --> UC_S2
+GM --> UC_S3
+GM --> UC_S4
+GM --> UC_S5
+GM --> UC_S6
+GM --> UC_S7
+GM --> UC_R2
+GM --> UC_R3
+GM --> UC_R4
+GM --> UC_REP1
+GM --> UC_REP2
+GM --> UC_REP3
+GM --> UC_REP4
+GM --> UC_REP5
+GM --> UC_N1
+GM --> UC_N2
+GM --> UC_N3
+GM --> UC_N4
+
+' ══════════════════════════════════════════════════════
+' ASSOCIATIONS — Chef de Service
+' ══════════════════════════════════════════════════════
+CS --> UC_D1
+CS --> UC_D2
+CS --> UC_D6
+CS --> UC_D12
+CS --> UC_S3
+CS --> UC_R1
+CS --> UC_R2
+CS --> UC_N1
+CS --> UC_N2
+CS --> UC_N3
+
+' ══════════════════════════════════════════════════════
+' ASSOCIATIONS — Service Financière
+' ══════════════════════════════════════════════════════
+SF --> UC_M8
+SF --> UC_M9
+SF --> UC_M10
+SF --> UC_M11
+SF --> UC_REP1
+SF --> UC_REP4
+SF --> UC_N1
+SF --> UC_N2
+SF --> UC_N3
+
+' ══════════════════════════════════════════════════════
+' ASSOCIATIONS — Fournisseur
+' ══════════════════════════════════════════════════════
+FO --> UC_M8
+FO --> UC_M11
+
+' ══════════════════════════════════════════════════════
+' ASSOCIATIONS — Administrateur
+' ══════════════════════════════════════════════════════
+AD --> UC_A1
+AD --> UC_A2
+AD --> UC_A3
+AD --> UC_A4
+AD --> UC_M8
+AD --> UC_REP1
+
+' ══════════════════════════════════════════════════════
+' RELATIONS INCLUDE / EXTEND
+' ══════════════════════════════════════════════════════
+UC_M2  ..> UC_M3  : <<inclut>>
+UC_M3  ..> UC_M4  : <<étend>>
+UC_M3  ..> UC_M5  : <<étend>>
+UC_M4  ..> UC_M7  : <<étend>>
+UC_D3  ..> UC_D5  : <<inclut>>
+
+@enduml

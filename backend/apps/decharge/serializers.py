@@ -26,6 +26,18 @@ class _UtilisateurBriefSerializer(serializers.Serializer):
     nom_complet = serializers.CharField()
 
 
+class _ServiceBriefSerializer(serializers.Serializer):
+    id_service = serializers.IntegerField()
+    nom_service = serializers.CharField()
+
+
+class _DemandeBriefSerializer(serializers.Serializer):
+    id_demande = serializers.IntegerField()
+    date_demande = serializers.DateTimeField()
+    service = _ServiceBriefSerializer(source="id_service", read_only=True)
+    chef_demandeur = _UtilisateurBriefSerializer(source="id_chef_demandeur", read_only=True)
+
+
 # ---------------------------------------------------------------------------
 # LigneDecharge
 # ---------------------------------------------------------------------------
@@ -61,7 +73,16 @@ class LigneDechargeSerializer(serializers.ModelSerializer):
 class DechargeSerializer(serializers.ModelSerializer):
     lignes = LigneDechargeSerializer(many=True, read_only=True)
     statut_signature = serializers.CharField(read_only=True)
+    date_signature = serializers.SerializerMethodField()
     genere_par = _UtilisateurBriefSerializer(source="id_genere_par", read_only=True)
+    demande = _DemandeBriefSerializer(source="id_demande", read_only=True)
+
+    def get_date_signature(self, obj):
+        try:
+            sig = obj.signature
+            return sig.date_validation_systeme or sig.date_signature
+        except SignatureDecharge.DoesNotExist:
+            return None
 
     class Meta:
         model = Decharge
@@ -77,6 +98,8 @@ class DechargeSerializer(serializers.ModelSerializer):
             "genere_par",
             "id_livre_a",
             "statut_signature",
+            "date_signature",
+            "demande",
             "lignes",
         ]
         read_only_fields = [
@@ -85,6 +108,7 @@ class DechargeSerializer(serializers.ModelSerializer):
             "date_generation",
             "fichier_pdf",
             "statut_signature",
+            "date_signature",
         ]
 
 
@@ -117,11 +141,11 @@ class DechargeCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         demande = attrs.get("id_demande")
-        if demande and demande.statut != "validee":
+        if demande and demande.statut not in ("partielle", "totale"):
             raise serializers.ValidationError(
                 {
                     "id_demande": (
-                        f"La demande doit être au statut 'validée' pour créer une décharge "
+                        f"La demande doit etre au statut 'partielle' ou 'totale' pour creer une decharge "
                         f"(statut actuel : '{demande.statut}')."
                     )
                 }
@@ -159,15 +183,12 @@ class DechargeCreateSerializer(serializers.ModelSerializer):
 
 
 class SignatureDechargeSerializer(serializers.ModelSerializer):
-    fichier_scan_signe = serializers.FileField(required=False, allow_null=True)
 
     class Meta:
         model = SignatureDecharge
         fields = [
             "id_signature",
             "date_signature",
-            "fichier_scan_signe",
-            "observation_chef",
             "statut",
             "date_validation_systeme",
             "id_decharge",
