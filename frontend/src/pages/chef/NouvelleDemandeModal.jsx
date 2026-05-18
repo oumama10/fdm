@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { getCategories, getSousCategories, getRessources } from '../../api/resources';
 import { createDemande } from '../../api/requests';
+import { getEtablissements, getBatiments, getServices, getBeneficiaires } from '../../api/users';
 import { useAuthStore } from '../../store/authStore';
 
 // ── Design tokens ─────────────────────────────────────────────────────────
@@ -75,16 +76,56 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
   const [lignes, setLignes]                         = useState([]);
   const [formError, setFormError]                   = useState('');
 
+  // ── Cascading hierarchy state ───────────────────────────────────────────
+  const [selectedEtabId, setSelectedEtabId]           = useState('');
+  const [selectedBatimentId, setSelectedBatimentId]   = useState('');
+  const [selectedServiceId, setSelectedServiceId]     = useState('');
+  const [selectedBenefId, setSelectedBenefId]         = useState('');
+
   const todayDisplay = useMemo(() => new Date().toLocaleDateString('fr-FR'), []);
 
-  const demandeurLabel = useMemo(() => {
-    const role = user?.id_role?.nom_role || user?.role || '';
-    if (role === 'chef_service')         return 'Chef de service';
-    if (role === 'service_financiere')   return 'Service financière';
-    if (role === 'gestionnaire_magasin') return 'Gestionnaire magasin';
-    if (role === 'admin')                return 'Administrateur';
-    return '—';
-  }, [user]);
+  // ── Hierarchy queries ───────────────────────────────────────────────────
+  const etabQuery = useQuery({
+    queryKey: ['hierarchy', 'etablissements'],
+    queryFn: getEtablissements,
+    staleTime: 300_000,
+  });
+  const etablissements = etabQuery.data?.data || [];
+
+  const batQuery = useQuery({
+    queryKey: ['hierarchy', 'batiments', selectedEtabId],
+    queryFn: () => getBatiments({ id_etablissement: selectedEtabId }),
+    enabled: Boolean(selectedEtabId),
+    staleTime: 300_000,
+  });
+  const batiments = batQuery.data?.data || [];
+
+  const svcQuery = useQuery({
+    queryKey: ['hierarchy', 'services', selectedBatimentId],
+    queryFn: () => getServices({ id_batiment: selectedBatimentId }),
+    enabled: Boolean(selectedBatimentId),
+    staleTime: 300_000,
+  });
+  const services = svcQuery.data?.data || [];
+
+  const benefQuery = useQuery({
+    queryKey: ['hierarchy', 'beneficiaires', selectedServiceId],
+    queryFn: () => getBeneficiaires({ id_service: selectedServiceId }),
+    enabled: Boolean(selectedServiceId),
+    staleTime: 300_000,
+  });
+  const beneficiaires = benefQuery.data?.data || [];
+
+  // Helper accessors (camelCase from DRF camel-case renderer)
+  const _eId  = (e) => e.idEtablissement ?? e.id_etablissement;
+  const _eNom = (e) => e.nom;
+  const _bId  = (b) => b.idBatiment ?? b.id_batiment;
+  const _bNom = (b) => b.nom;
+  const _sId  = (s) => s.idService ?? s.id_service;
+  const _sNom = (s) => s.nomService ?? s.nom_service;
+  const _benId   = (b) => b.idBeneficiaire ?? b.id_beneficiaire;
+  const _benNom  = (b) => b.nom;
+  const _benRole = (b) => b.roleType ?? b.role_type;
 
   // ── Data queries ────────────────────────────────────────────────────────
   const categoriesQuery = useQuery({
@@ -197,17 +238,20 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
 
   async function handleSubmit() {
     setFormError('');
-    const serviceId = toServiceId(user);
-    if (!serviceId) { setFormError('Service utilisateur introuvable.'); return; }
+    const serviceId = Number(selectedServiceId);
+    if (!serviceId) { setFormError('Veuillez sélectionner un service.'); return; }
+    if (!selectedBenefId) { setFormError('Veuillez sélectionner un bénéficiaire.'); return; }
     if (!lignes.length) { setFormError('Ajoutez au moins une ligne.'); return; }
+    const benef = beneficiaires.find((b) => String(_benId(b)) === String(selectedBenefId));
     await createMutation.mutateAsync({
       urgence,
       type_demandeur: 'chef_service',
       beneficiaire_type: 'service',
-      beneficiaire_nom: user?.service?.nom || '',
+      beneficiaire_nom: benef ? _benNom(benef) : '',
       beneficiaire_detail: '',
       justification,
       id_service: serviceId,
+      id_beneficiaire: Number(selectedBenefId),
       lignes: lignes.map((l) => ({
         id_ressource: Number(l.id_ressource),
         quantite_demandee: Number(l.quantite_demandee),
@@ -242,17 +286,87 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
               <Field label="Date">
                 <Input value={todayDisplay} readOnly style={{ color: C.textMuted }} />
               </Field>
-              <Field label="Demandeur">
-                <Input value={demandeurLabel} readOnly style={{ color: C.textMuted }} />
+              <Field label="Urgence">
+                <Select value={urgence} onChange={(e) => setUrgence(e.target.value)}>
+                  <option value="normal">Normal</option>
+                  <option value="moyen">Moyen</option>
+                  <option value="urgent">Urgent</option>
+                </Select>
               </Field>
             </div>
-            <Field label="Urgence">
-              <Select value={urgence} onChange={(e) => setUrgence(e.target.value)} style={{ maxWidth: 280 }}>
-                <option value="normal">Normal</option>
-                <option value="moyen">Moyen</option>
-                <option value="urgent">Urgent</option>
-              </Select>
-            </Field>
+          </section>
+
+          {/* Désignation du demandeur — cascading dropdowns */}
+          <section style={sectionCardStyle}>
+            <h3 style={sectionTitleStyle}>Désignation du demandeur</h3>
+            <div style={row2Style}>
+              <Field label="Établissement" required>
+                <Select
+                  value={selectedEtabId}
+                  onChange={(e) => {
+                    setSelectedEtabId(e.target.value);
+                    setSelectedBatimentId('');
+                    setSelectedServiceId('');
+                    setSelectedBenefId('');
+                  }}
+                >
+                  <option value="">— Choisir —</option>
+                  {etablissements.map((e) => (
+                    <option key={_eId(e)} value={_eId(e)}>{_eNom(e)}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Bâtiment" required>
+                <Select
+                  value={selectedBatimentId}
+                  onChange={(e) => {
+                    setSelectedBatimentId(e.target.value);
+                    setSelectedServiceId('');
+                    setSelectedBenefId('');
+                  }}
+                  disabled={!selectedEtabId}
+                  style={{ color: !selectedEtabId ? C.textMuted : undefined }}
+                >
+                  <option value="">— Choisir —</option>
+                  {batiments.map((b) => (
+                    <option key={_bId(b)} value={_bId(b)}>{_bNom(b)}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div style={row2Style}>
+              <Field label="Service" required>
+                <Select
+                  value={selectedServiceId}
+                  onChange={(e) => {
+                    setSelectedServiceId(e.target.value);
+                    setSelectedBenefId('');
+                  }}
+                  disabled={!selectedBatimentId}
+                  style={{ color: !selectedBatimentId ? C.textMuted : undefined }}
+                >
+                  <option value="">— Choisir —</option>
+                  {services.map((s) => (
+                    <option key={_sId(s)} value={_sId(s)}>{_sNom(s)}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Bénéficiaire" required>
+                <Select
+                  value={selectedBenefId}
+                  onChange={(e) => setSelectedBenefId(e.target.value)}
+                  disabled={!selectedServiceId}
+                  style={{ color: !selectedServiceId ? C.textMuted : undefined }}
+                >
+                  <option value="">— Choisir —</option>
+                  {beneficiaires.map((b) => (
+                    <option key={_benId(b)} value={_benId(b)}>
+                      {_benNom(b)} ({_benRole(b) === 'chef_service' ? 'Chef' : _benRole(b) === 'secretariat' ? 'Secrétariat' : _benRole(b) === 'salle_de_cours' ? 'Salle de cours' : _benRole(b) === 'fonctionnaire' ? 'Fonctionnaire' : _benRole(b) === 'prof' ? 'Prof' : _benRole(b)})
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
           </section>
 
           {/* Type d'article */}

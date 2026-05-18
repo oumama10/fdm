@@ -68,18 +68,21 @@ export default function RetoursPage() {
     staleTime: 30000,
   });
 
+  // Helper: access camelCase or snake_case keys
+  const _v = (row, camel, snake) => row[camel] ?? row[snake];
+
   const rows = useMemo(() => {
-    const data = retoursQuery.data?.data || [];
+    const data = retoursQuery.data?.data?.results ?? retoursQuery.data?.data ?? [];
     return [...data]
-      .filter((r) => (motifFilter ? r.motif_retour === motifFilter : true))
+      .filter((r) => (motifFilter ? (_v(r,'motifRetour','motif_retour')) === motifFilter : true))
       .filter((r) => {
         if (!etatFilter) return true;
         if (etatFilter === 'en_attente') return !r.decision;
         if (etatFilter === 'traite')     return Boolean(r.decision);
         return true;
       })
-      .sort((a, b) => new Date(b.date_retour || 0) - new Date(a.date_retour || 0));
-  }, [retoursQuery.data?.data, motifFilter, etatFilter]);
+      .sort((a, b) => new Date(_v(b,'dateRetour','date_retour') || 0) - new Date(_v(a,'dateRetour','date_retour') || 0));
+  }, [retoursQuery.data, motifFilter, etatFilter]);
 
   return (
     <div style={{ display: 'grid', gap: 16, paddingBottom: 40 }}>
@@ -139,23 +142,28 @@ export default function RetoursPage() {
                       Aucun retour trouvé.
                     </td>
                   </tr>
-                ) : rows.map((row) => (
+                ) : rows.map((row) => {
+                  const dateRetour = _v(row,'dateRetour','date_retour');
+                  const motif = _v(row,'motifRetour','motif_retour');
+                  const inst = row.instanceRessource ?? row.instance_ressource;
+                  const numInv = inst?.numeroInventaire ?? inst?.numero_inventaire;
+                  return (
                   <tr
-                    key={row.id_retour}
+                    key={row.idRetour ?? row.id_retour}
                     style={{ borderTop: `1px solid ${T.border}` }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = T.bgSubtle; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
                   >
                     <td style={{ ...tdStyle, color: T.textMid }}>
-                      {row.date_retour ? new Date(row.date_retour).toLocaleDateString('fr-FR') : '—'}
+                      {dateRetour ? new Date(dateRetour).toLocaleDateString('fr-FR') : '—'}
                     </td>
                     <td style={{ ...tdStyle, fontWeight: 600, color: T.textDark }}>
                       {row.ressource?.designation || '—'}
                     </td>
                     <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12, color: T.textMuted }}>
-                      {row.instance_ressource?.numero_inventaire || '—'}
+                      {numInv || '—'}
                     </td>
-                    <td style={tdStyle}><MotifBadge value={row.motif_retour} /></td>
+                    <td style={tdStyle}><MotifBadge value={motif} /></td>
                     <td style={tdStyle}><EtatBadge decision={row.decision} /></td>
                     <td style={{ ...tdStyle, color: T.textMid, maxWidth: 220 }}>
                       {row.observation
@@ -164,7 +172,8 @@ export default function RetoursPage() {
                       }
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

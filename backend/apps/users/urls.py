@@ -3,6 +3,9 @@ from rest_framework.routers import DefaultRouter
 
 from .views_auth import LoginView, LogoutView, MeView, RefreshView
 from .views import (
+	BatimentViewSet,
+	BeneficiaireViewSet,
+	EtablissementViewSet,
 	FournisseurViewSet,
 	JournalAuditViewSet,
 	RoleViewSet,
@@ -13,7 +16,10 @@ from .views import (
 
 router = DefaultRouter()
 router.register("utilisateurs", UtilisateurViewSet, basename="utilisateur")
+router.register("etablissements", EtablissementViewSet, basename="etablissement")
+router.register("batiments", BatimentViewSet, basename="batiment")
 router.register("services", ServiceViewSet, basename="service")
+router.register("beneficiaires", BeneficiaireViewSet, basename="beneficiaire")
 router.register("roles", RoleViewSet, basename="role")
 router.register("journal-audit", JournalAuditViewSet, basename="journal-audit")
 router.register("fournisseurs", FournisseurViewSet, basename="fournisseur")

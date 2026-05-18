@@ -63,6 +63,7 @@ export default function RetoursPage() {
   const queryClient = useQueryClient();
   const [motifFilter, setMotifFilter] = useState('tous');
   const [decisionFilter, setDecisionFilter] = useState('en_attente');
+  const [showFilters, setShowFilters] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const [justification, setJustification] = useState('');
 
@@ -81,10 +82,13 @@ export default function RetoursPage() {
     },
   });
 
+  // Helper: access camelCase or snake_case keys
+  const _v = (row, camel, snake) => row[camel] ?? row[snake];
+
   const rows = useMemo(() => {
-    const data = retoursQuery.data?.data || [];
+    const data = retoursQuery.data?.data?.results ?? retoursQuery.data?.data ?? [];
     const filtered = data.filter((row) => {
-      const matchesMotif = motifFilter === 'tous' || row.motif_retour === motifFilter;
+      const matchesMotif = motifFilter === 'tous' || (_v(row,'motifRetour','motif_retour')) === motifFilter;
       const matchesDecision =
         decisionFilter === 'tous' ||
         (decisionFilter === 'en_attente' ? !row.decision : Boolean(row.decision));
@@ -94,12 +98,12 @@ export default function RetoursPage() {
       const aPending = !a.decision;
       const bPending = !b.decision;
       if (aPending !== bPending) return aPending ? -1 : 1;
-      return new Date(b.date_retour || 0) - new Date(a.date_retour || 0);
+      return new Date(_v(b,'dateRetour','date_retour') || 0) - new Date(_v(a,'dateRetour','date_retour') || 0);
     });
-  }, [retoursQuery.data?.data, motifFilter, decisionFilter]);
+  }, [retoursQuery.data, motifFilter, decisionFilter]);
 
   function openConfirm(row, decision) {
-    setConfirmState({ id: row.id_retour, decision });
+    setConfirmState({ id: row.idRetour ?? row.id_retour, decision });
     setJustification('');
   }
 
@@ -114,34 +118,64 @@ export default function RetoursPage() {
     });
   }
 
+  const IconFilter = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+    </svg>
+  );
+
   return (
     <div style={{ display: 'grid', gap: 16, paddingBottom: 40 }}>
+      {/* Header action */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: T.textDark, margin: 0 }}>Retours</h2>
+        <button
+          style={{
+            border: `1px solid ${T.border}`,
+            borderRadius: T.radiusSm,
+            padding: '8px 16px',
+            background: showFilters ? '#e2e8f0' : '#fff',
+            color: T.textDark,
+            cursor: 'pointer',
+            fontWeight: 600,
+            fontSize: 13,
+            display: 'inline-flex',
+            alignItems: 'center',
+          }}
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          <IconFilter /> {showFilters ? 'Masquer filtres' : 'Filtres'}
+        </button>
+      </div>
+
       {/* ── Table shell ── */}
       <div style={tableShell}>
 
         {/* Toolbar / filters */}
-        <div style={toolbar}>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Motif</span>
-              <select style={selectStyle} value={motifFilter} onChange={(e) => setMotifFilter(e.target.value)}>
-                <option value="tous">Tous</option>
-                <option value="panne">Panne</option>
-                <option value="inutilise">Inutilisé</option>
-                <option value="endommage">Endommagé</option>
-                <option value="autre">Autre</option>
-              </select>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Décision</span>
-              <select style={selectStyle} value={decisionFilter} onChange={(e) => setDecisionFilter(e.target.value)}>
-                <option value="tous">Tous</option>
-                <option value="en_attente">En attente</option>
-                <option value="traite">Traité</option>
-              </select>
+        {showFilters && (
+          <div style={toolbar}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Motif</span>
+                <select style={selectStyle} value={motifFilter} onChange={(e) => setMotifFilter(e.target.value)}>
+                  <option value="tous">Tous</option>
+                  <option value="panne">Panne</option>
+                  <option value="inutilise">Inutilisé</option>
+                  <option value="endommage">Endommagé</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Décision</span>
+                <select style={selectStyle} value={decisionFilter} onChange={(e) => setDecisionFilter(e.target.value)}>
+                  <option value="tous">Tous</option>
+                  <option value="en_attente">En attente</option>
+                  <option value="traite">Traité</option>
+                </select>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Table */}
         {retoursQuery.isLoading ? (
@@ -166,18 +200,24 @@ export default function RetoursPage() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
-                    <tr key={row.id_retour} style={{ borderTop: `1px solid ${T.border}` }}>
+                  rows.map((row) => {
+                    const dateRetour = _v(row,'dateRetour','date_retour');
+                    const motif = _v(row,'motifRetour','motif_retour');
+                    const inst = row.instanceRessource ?? row.instance_ressource;
+                    const numInv = inst?.numeroInventaire ?? inst?.numero_inventaire;
+                    const retPar = row.retournePar ?? row.retourne_par;
+                    return (
+                    <tr key={row.idRetour ?? row.id_retour} style={{ borderTop: `1px solid ${T.border}` }}>
                       <td style={{ ...tdStyle, color: T.textMid }}>
-                        {row.date_retour ? new Date(row.date_retour).toLocaleDateString('fr-FR') : '—'}
+                        {dateRetour ? new Date(dateRetour).toLocaleDateString('fr-FR') : '—'}
                       </td>
                       <td style={{ ...tdStyle, fontWeight: 600, color: T.textDark }}>
                         {row.ressource?.designation || '—'}
                       </td>
                       <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12, color: T.textMuted }}>
-                        {row.instance_ressource?.numero_inventaire || '—'}
+                        {numInv || '—'}
                       </td>
-                      <td style={tdStyle}><MotifBadge value={row.motif_retour} /></td>
+                      <td style={tdStyle}><MotifBadge value={motif} /></td>
                       <td style={tdStyle}>
                         {row.decision
                           ? <DecisionBadge value={row.decision} />
@@ -185,7 +225,7 @@ export default function RetoursPage() {
                         }
                       </td>
                       <td style={{ ...tdStyle, color: T.textMid }}>
-                        {row.retourne_par?.nom_complet || '—'}
+                        {retPar?.nomComplet ?? retPar?.nom_complet ?? '—'}
                       </td>
                       <td style={tdStyle}>
                         {!row.decision ? (
@@ -205,7 +245,8 @@ export default function RetoursPage() {
                         )}
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

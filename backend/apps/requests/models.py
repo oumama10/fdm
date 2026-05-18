@@ -35,6 +35,13 @@ class Demande(models.Model):
         related_name="demandes_soumises",
     )
     id_service = models.ForeignKey("users.Service", on_delete=models.CASCADE)
+    id_beneficiaire = models.ForeignKey(
+        "users.Beneficiaire",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="demandes",
+    )
     id_valide_par = models.ForeignKey(
         "users.Utilisateur",
         on_delete=models.SET_NULL,

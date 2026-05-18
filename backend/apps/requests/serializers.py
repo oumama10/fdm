@@ -38,17 +38,44 @@ class _RessourceBriefSerializer(serializers.Serializer):
 
 
 class _UtilisateurBriefSerializer(serializers.Serializer):
-    """Read-only: {id_utilisateur, nom_complet}."""
+    """Read-only: user info for demande detail."""
 
     id_utilisateur = serializers.IntegerField()
     nom_complet = serializers.CharField()
+    email = serializers.EmailField()
+    service_nom = serializers.SerializerMethodField()
+    role_nom = serializers.SerializerMethodField()
+
+    def get_service_nom(self, obj):
+        return obj.id_service.nom_service if obj.id_service else None
+
+    def get_role_nom(self, obj):
+        return obj.id_role.nom_role if obj.id_role else None
 
 
 class _ServiceBriefSerializer(serializers.Serializer):
-    """Read-only: {id_service, nom_service}."""
+    """Read-only: service with hierarchy info."""
 
     id_service = serializers.IntegerField()
     nom_service = serializers.CharField()
+    batiment_nom = serializers.SerializerMethodField()
+    etablissement_nom = serializers.SerializerMethodField()
+
+    def get_batiment_nom(self, obj):
+        return obj.id_batiment.nom if obj.id_batiment else None
+
+    def get_etablissement_nom(self, obj):
+        if obj.id_batiment and obj.id_batiment.id_etablissement:
+            return obj.id_batiment.id_etablissement.nom
+        return None
+
+
+class _BeneficiaireBriefSerializer(serializers.Serializer):
+    """Read-only: {id_beneficiaire, nom, role_type}."""
+
+    id_beneficiaire = serializers.IntegerField()
+    nom = serializers.CharField()
+    role_type = serializers.CharField()
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +85,7 @@ class _ServiceBriefSerializer(serializers.Serializer):
 
 class LigneDemandeSerializer(serializers.ModelSerializer):
     ressource = _RessourceBriefSerializer(source="id_ressource", read_only=True)
+    disponibilite_pct = serializers.SerializerMethodField()
 
     class Meta:
         model = LigneDemande
@@ -70,8 +98,33 @@ class LigneDemandeSerializer(serializers.ModelSerializer):
             "id_demande",
             "id_ressource",
             "ressource",
+            "disponibilite_pct",
         ]
         read_only_fields = ["id_ligne", "id_demande"]
+
+    def get_disponibilite_pct(self, obj) -> int:
+        from apps.resources.models import Stock, InstanceRessource
+        
+        ressource = obj.id_ressource
+        if not ressource:
+            return 0
+            
+        qty_demande = obj.quantite_demandee
+        if qty_demande <= 0:
+            return 100
+            
+        if ressource.is_consommable:
+            stock = Stock.objects.filter(id_ressource=ressource).first()
+            available = stock.quantite_disponible if stock else 0
+        else:
+            available = InstanceRessource.objects.filter(
+                id_ressource=ressource,
+                statut="en_stock"
+            ).count()
+            
+        pct = int((available / qty_demande) * 100)
+        return min(100, pct)
+
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +139,7 @@ class DemandeSerializer(serializers.ModelSerializer):
         source="id_chef_demandeur", read_only=True
     )
     service = _ServiceBriefSerializer(source="id_service", read_only=True)
+    beneficiaire = _BeneficiaireBriefSerializer(source="id_beneficiaire", read_only=True)
     decharge_id = serializers.SerializerMethodField()
 
     def get_decharge_id(self, obj):
@@ -114,6 +168,8 @@ class DemandeSerializer(serializers.ModelSerializer):
             "chef_demandeur",
             "id_service",
             "service",
+            "id_beneficiaire",
+            "beneficiaire",
             "id_valide_par",
             "lignes",
             "lien_suivi",
@@ -167,6 +223,7 @@ class DemandeCreateSerializer(serializers.ModelSerializer):
             "beneficiaire_detail",
             "justification",
             "id_service",
+            "id_beneficiaire",
             "lignes",
         ]
 

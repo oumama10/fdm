@@ -143,11 +143,13 @@ class MarcheBCViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(type_acquisition=type_acquisition)
 
         # Only surface marchés that belong on the list pages:
-        # - all receptionne_et_stocke
+        # - all receptionne_et_stocke and refuse
         # - en_attente_livraison only when created via the manual form (source=manuel)
+        # - en_attente_livraison from imports when they are sent to the gestionnaire (en_revision)
         qs = qs.filter(
-            Q(statut="receptionne_et_stocke") |
-            Q(statut="en_attente_livraison", source="manuel")
+            Q(statut__in=["receptionne_et_stocke", "refuse"]) |
+            Q(statut="en_attente_livraison", source="manuel") |
+            Q(statut="en_attente_livraison", source="import", import_excel__statut_import="en_revision")
         )
 
         return qs
@@ -183,6 +185,21 @@ class MarcheBCViewSet(viewsets.ModelViewSet):
             items = StagingItem.objects.filter(id_import=import_obj).select_related(
                 "id_ressource_liee", "id_categorie_suggeree", "id_sous_categorie_suggeree"
             )
+            
+            unclassified = []
+            for item in items:
+                if not _find_or_create_ressource(item):
+                    unclassified.append((item.designation_brute or item.designation_normalisee or "Inconnu")[:50])
+            
+            if unclassified:
+                names = ", ".join(unclassified[:3])
+                if len(unclassified) > 3:
+                    names += "..."
+                return Response(
+                    {"detail": f"Veuillez classer tous les articles avant de confirmer. Non classés: {names}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             for item in items:
                 ressource = _find_or_create_ressource(item)
                 if ressource:
@@ -194,6 +211,29 @@ class MarcheBCViewSet(viewsets.ModelViewSet):
         marche.statut = "receptionne_et_stocke"
         marche.save(update_fields=["statut", "reference"])
         _complete_reception_etapes(marche)
+
+        serializer = self.get_serializer(marche)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="refuser")
+    def refuser(self, request, pk=None):
+        marche = self.get_object()
+
+        if marche.statut != "en_attente_livraison":
+            return Response(
+                {"detail": "Seul un marché en attente de livraison peut être refusé."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        motif = str(request.data.get("motif_rejet") or "").strip()
+        marche.statut = "refuse"
+        marche.motif_rejet = motif
+        marche.save(update_fields=["statut", "motif_rejet"])
+
+        # Also mark associated import as rejected
+        import_obj = getattr(marche, "import_excel", None)
+        if import_obj:
+            ImportExcelBC.objects.filter(pk=import_obj.pk).update(statut_import="rejete")
 
         serializer = self.get_serializer(marche)
         return Response(serializer.data)

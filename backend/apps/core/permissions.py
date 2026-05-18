@@ -64,6 +64,14 @@ class IsGestionnaireOrAdmin(BasePermission):
         return user.id_role.nom_role in {"gestionnaire_magasin", "admin"}
 
 
+class IsGestionnaireOrFinanciereOrAdmin(BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated or not user.id_role:
+            return False
+        return user.id_role.nom_role in {"gestionnaire_magasin", "service_financiere", "admin"}
+
+
 class IsChefServiceOwner(BasePermission):
     def has_object_permission(self, request, view, obj):
         return bool(request.user and request.user.is_authenticated and obj.id_chef_demandeur == request.user)

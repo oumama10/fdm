@@ -3,7 +3,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.core.permissions import IsGestionnaireOrAdmin
+from apps.core.permissions import IsGestionnaireOrFinanciereOrAdmin
 
 from .models import AlerteDelai, Notification
 from .serializers import AlerteDelaiSerializer, NotificationSerializer
@@ -22,12 +22,12 @@ class AlerteDelaiViewSet(
 ):
     """
     Read + acquitte patch.  No create or destroy via API.
-    Permission : IsGestionnaireOrAdmin only (gestionnaire_magasin and admin)
+    Permission : IsGestionnaireOrFinanciereOrAdmin (gestionnaire, financiere, admin)
     Default filter : acquitte=False (pass ?acquitte=true to include acquitted)
     """
 
     serializer_class = AlerteDelaiSerializer
-    permission_classes = [IsGestionnaireOrAdmin]
+    permission_classes = [IsGestionnaireOrFinanciereOrAdmin]
     http_method_names = ["get", "patch", "head", "options"]
 
     def get_queryset(self):

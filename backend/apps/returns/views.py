@@ -14,8 +14,10 @@ from .serializers import RetourMaterielSerializer
 
 # Maps motif → (instance.etat, instance.statut)
 _MOTIF_ETAT = {
-    "panne":     ("hors_service", "hors_service"),
-    "inutilise": ("retourne",     "en_stock"),
+    "panne":      ("hors_service", "hors_service"),
+    "inutilise":  ("retourne",     "en_stock"),
+    "endommage":  ("endommage",    "en_maintenance"),
+    "autre":      ("retourne",     "en_stock"),
 }
 
 

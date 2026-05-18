@@ -48,11 +48,14 @@ class DemandeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Demande.objects.select_related(
-            "id_chef_demandeur",
-            "id_service",
+            "id_chef_demandeur__id_service",
+            "id_chef_demandeur__id_role",
+            "id_service__id_batiment__id_etablissement",
+            "id_beneficiaire",
             "id_valide_par",
         ).prefetch_related(
             "lignes__id_ressource__id_categorie",
+            "lignes__id_ressource__id_sous_categorie__id_parent_sous_categorie",
         )
 
         user = self.request.user

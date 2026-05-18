@@ -19,3 +19,8 @@ export const deleteService = (id) => apiClient.delete(`/users/services/${id}/`);
 export const getFournisseurs = () => apiClient.get('/users/fournisseurs/');
 
 export const getJournalAudit = (params = {}) => apiClient.get('/users/journal-audit/', { params });
+
+// ── Hierarchy endpoints ───────────────────────────────────────────────────
+export const getEtablissements = () => apiClient.get('/users/etablissements/');
+export const getBatiments = (params = {}) => apiClient.get('/users/batiments/', { params });
+export const getBeneficiaires = (params = {}) => apiClient.get('/users/beneficiaires/', { params });

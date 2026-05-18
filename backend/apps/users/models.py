@@ -54,6 +54,34 @@ class RolePermission(models.Model):
         return f"{self.id_role} - {self.id_permission}"
 
 
+class Etablissement(models.Model):
+    id_etablissement = models.AutoField(primary_key=True)
+    nom = models.CharField(max_length=200, unique=True)
+
+    class Meta:
+        verbose_name = "établissement"
+        verbose_name_plural = "établissements"
+
+    def __str__(self):
+        return self.nom
+
+
+class Batiment(models.Model):
+    id_batiment = models.AutoField(primary_key=True)
+    nom = models.CharField(max_length=200)
+    id_etablissement = models.ForeignKey(
+        Etablissement, on_delete=models.CASCADE, related_name="batiments"
+    )
+
+    class Meta:
+        verbose_name = "bâtiment"
+        verbose_name_plural = "bâtiments"
+        unique_together = ("nom", "id_etablissement")
+
+    def __str__(self):
+        return f"{self.nom} ({self.id_etablissement.nom})"
+
+
 class Service(models.Model):
     TYPE_SERVICE_CHOICES = [
         ("administratif", "administratif"),
@@ -74,6 +102,13 @@ class Service(models.Model):
         blank=True,
         null=True,
     )
+    id_batiment = models.ForeignKey(
+        Batiment,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="services",
+    )
 
     class Meta:
         verbose_name = "service"
@@ -81,6 +116,30 @@ class Service(models.Model):
 
     def __str__(self):
         return self.nom_service
+
+
+class Beneficiaire(models.Model):
+    ROLE_CHOICES = [
+        ("chef_service", "Chef de Service"),
+        ("fonctionnaire", "Fonctionnaire"),
+        ("secretariat", "Secrétariat"),
+        ("salle_de_cours", "Salle de cours"),
+        ("prof", "Prof"),
+    ]
+
+    id_beneficiaire = models.AutoField(primary_key=True)
+    nom = models.CharField(max_length=200)
+    role_type = models.CharField(max_length=30, choices=ROLE_CHOICES)
+    id_service = models.ForeignKey(
+        Service, on_delete=models.CASCADE, related_name="beneficiaires"
+    )
+
+    class Meta:
+        verbose_name = "bénéficiaire"
+        verbose_name_plural = "bénéficiaires"
+
+    def __str__(self):
+        return f"{self.nom} ({self.get_role_type_display()})"
 
 
 class UtilisateurManager(BaseUserManager):

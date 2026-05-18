@@ -14,6 +14,7 @@ class MarcheBC(models.Model):
     STATUT_CHOICES = [
         ("en_attente_livraison", "en_attente_livraison"),
         ("receptionne_et_stocke", "receptionne_et_stocke"),
+        ("refuse", "refuse"),
     ]
     DELAIS_PAR_TYPE = {
         "marche": 90,
@@ -39,6 +40,7 @@ class MarcheBC(models.Model):
         default="en_attente_livraison",
         db_index=True,
     )
+    motif_rejet = models.TextField(blank=True, default="")
     fichier_cps = models.FileField(upload_to="marches/cps/", blank=True, null=True)
     type_donateur = models.CharField(max_length=50, blank=True, default="")
     nom_donateur = models.CharField(max_length=255, blank=True, default="")

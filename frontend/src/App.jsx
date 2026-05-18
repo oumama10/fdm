@@ -101,6 +101,8 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/gestionnaire/bons-commande/:id" element={<ProtectedRoute requiredRole="gestionnaire_magasin"><MarcheDetailPage /></ProtectedRoute>} />
+          <Route path="/gestionnaire/dons/:id" element={<ProtectedRoute requiredRole="gestionnaire_magasin"><MarcheDetailPage /></ProtectedRoute>} />
           <Route
             path="/gestionnaire/marches/nouveau"
             element={
@@ -109,6 +111,8 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/gestionnaire/bons-commande/nouveau" element={<ProtectedRoute requiredRole="gestionnaire_magasin"><MarcheManualCreatePage /></ProtectedRoute>} />
+          <Route path="/gestionnaire/dons/nouveau" element={<ProtectedRoute requiredRole="gestionnaire_magasin"><MarcheManualCreatePage /></ProtectedRoute>} />
           <Route
             path="/gestionnaire/bons-commande"
             element={
@@ -130,22 +134,6 @@ export default function App() {
             element={
               <ProtectedRoute requiredRole="gestionnaire_magasin">
                 <FinanciereImportExcelPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/gestionnaire/donnees-extraites"
-            element={
-              <ProtectedRoute requiredRole="gestionnaire_magasin">
-                <DonneesExtraitesPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/gestionnaire/donnees-extraites/:import_id"
-            element={
-              <ProtectedRoute requiredRole="gestionnaire_magasin">
-                <DonneesExtraitesDetailPage />
               </ProtectedRoute>
             }
           />
@@ -301,6 +289,8 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/financiere/bons-commande/:id" element={<ProtectedRoute requiredRole="service_financiere"><MarcheDetailPage /></ProtectedRoute>} />
+          <Route path="/financiere/dons/:id" element={<ProtectedRoute requiredRole="service_financiere"><MarcheDetailPage /></ProtectedRoute>} />
           <Route
             path="/financiere/marches/nouveau"
             element={
@@ -309,6 +299,8 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/financiere/bons-commande/nouveau" element={<ProtectedRoute requiredRole="service_financiere"><MarcheManualCreatePage /></ProtectedRoute>} />
+          <Route path="/financiere/dons/nouveau" element={<ProtectedRoute requiredRole="service_financiere"><MarcheManualCreatePage /></ProtectedRoute>} />
           <Route
             path="/financiere/bons-commande"
             element={
@@ -330,6 +322,14 @@ export default function App() {
             element={
               <ProtectedRoute requiredRole="service_financiere">
                 <FinanciereImportExcelPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/financiere/alertes"
+            element={
+              <ProtectedRoute requiredRole="service_financiere">
+                <GestionnaireAlertesPage />
               </ProtectedRoute>
             }
           />

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 
-import { downloadPdf, getDechargeById, getSignatureDetail } from '../../api/decharge';
+import { downloadDechargePdf, getDechargeById, getSignatureDetail } from '../../api/decharge';
 
 // ── Design tokens ─────────────────────────────────────────────────────────
 const T = {
@@ -56,16 +56,7 @@ function StatutBadge({ value }) {
   );
 }
 
-async function triggerDownload(id) {
-  const res = await downloadPdf(id);
-  const blob = new Blob([res.data], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `decharge-${id}.pdf`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+
 
 // ── Page ──────────────────────────────────────────────────────────────────
 export default function ChefDechargeDetailPage() {
@@ -96,7 +87,6 @@ export default function ChefDechargeDetailPage() {
   const sigDate = decharge.dateSignature ?? decharge.date_signature
     ?? (sig ? (sig.dateValidationSysteme ?? sig.date_validation_systeme ?? sig.dateSignature ?? sig.date_signature) : null);
 
-  const hasPdf = Boolean(decharge.fichierPdf ?? decharge.fichier_pdf);
 
   return (
     <div style={{ display: 'grid', gap: 16, paddingBottom: 40 }}>
@@ -203,9 +193,8 @@ export default function ChefDechargeDetailPage() {
           ← Retour
         </Link>
         <button
-          style={{ ...btnOutline, opacity: hasPdf ? 1 : 0.5, cursor: hasPdf ? 'pointer' : 'not-allowed' }}
-          onClick={() => hasPdf && triggerDownload(id)}
-          disabled={!hasPdf}
+          style={btnOutline}
+          onClick={() => downloadDechargePdf(id)}
         >
           &#9113; Imprimer PDF
         </button>

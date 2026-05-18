@@ -22,11 +22,15 @@ const C = {
 const MOTIFS = [
   { value: 'panne',      label: 'Panne',      desc: "L'équipement est tombé en panne" },
   { value: 'inutilise',  label: 'Inutilisé',  desc: "L'équipement n'est plus utilisé" },
+  { value: 'endommage',  label: 'Endommagé',  desc: "L'équipement est endommagé" },
+  { value: 'autre',      label: 'Autre',      desc: "Autre motif de retour" },
 ];
 
 const MOTIF_COLORS = {
   panne:     { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
   inutilise: { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+  endommage: { bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
+  autre:     { bg: '#ede9fe', color: '#5b21b6', border: '#c4b5fd' },
 };
 
 // ── Field wrapper ─────────────────────────────────────────────────────────

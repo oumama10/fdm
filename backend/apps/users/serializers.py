@@ -2,7 +2,17 @@ from django.contrib.auth import authenticate
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Fournisseur, Permission, Role, RolePermission, Service, Utilisateur
+from .models import (
+    Batiment,
+    Beneficiaire,
+    Etablissement,
+    Fournisseur,
+    Permission,
+    Role,
+    RolePermission,
+    Service,
+    Utilisateur,
+)
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -26,6 +36,18 @@ class RolePermissionSerializer(serializers.ModelSerializer):
         fields = ["id_role", "id_permission", "accorde"]
 
 
+class EtablissementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Etablissement
+        fields = ["id_etablissement", "nom"]
+
+
+class BatimentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Batiment
+        fields = ["id_batiment", "nom", "id_etablissement"]
+
+
 class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
@@ -35,7 +57,14 @@ class ServiceSerializer(serializers.ModelSerializer):
             "type_service",
             "description",
             "lettre_nomination_chef",
+            "id_batiment",
         ]
+
+
+class BeneficiaireSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Beneficiaire
+        fields = ["id_beneficiaire", "nom", "role_type", "id_service"]
 
 
 class FournisseurSerializer(serializers.ModelSerializer):

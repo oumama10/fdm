@@ -7,8 +7,11 @@ from rest_framework import permissions, viewsets
 from apps.alerts.models import JournalAudit
 from apps.core.permissions import IsAdmin
 
-from .models import Fournisseur, Role, Service, Utilisateur
+from .models import Batiment, Beneficiaire, Etablissement, Fournisseur, Role, Service, Utilisateur
 from .serializers import (
+    BatimentSerializer,
+    BeneficiaireSerializer,
+    EtablissementSerializer,
     FournisseurSerializer,
     JournalAuditSerializer,
     RoleSerializer,
@@ -47,6 +50,24 @@ class UtilisateurViewSet(viewsets.ModelViewSet):
         return qs
 
 
+class EtablissementViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = EtablissementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = Etablissement.objects.all().order_by("nom")
+
+
+class BatimentViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = BatimentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = Batiment.objects.select_related("id_etablissement").order_by("nom")
+        id_etablissement = self.request.query_params.get("id_etablissement")
+        if id_etablissement:
+            qs = qs.filter(id_etablissement_id=id_etablissement)
+        return qs
+
+
 class ServiceViewSet(viewsets.ModelViewSet):
     serializer_class = ServiceSerializer
     queryset = Service.objects.all().order_by("nom_service")
@@ -55,6 +76,25 @@ class ServiceViewSet(viewsets.ModelViewSet):
         if self.action in ["list", "retrieve"]:
             return [permissions.IsAuthenticated()]
         return [IsAdmin()]
+
+    def get_queryset(self):
+        qs = Service.objects.all().order_by("nom_service")
+        id_batiment = self.request.query_params.get("id_batiment")
+        if id_batiment:
+            qs = qs.filter(id_batiment_id=id_batiment)
+        return qs
+
+
+class BeneficiaireViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = BeneficiaireSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = Beneficiaire.objects.select_related("id_service").order_by("role_type", "nom")
+        id_service = self.request.query_params.get("id_service")
+        if id_service:
+            qs = qs.filter(id_service_id=id_service)
+        return qs
 
 
 class RoleViewSet(viewsets.ReadOnlyModelViewSet):

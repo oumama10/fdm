@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
-import { downloadPdf, getDecharges } from '../../api/decharge';
+import { downloadDechargePdf, getDecharges } from '../../api/decharge';
 
 // ── Design tokens ─────────────────────────────────────────────────────────
 const T = {
@@ -57,17 +57,7 @@ function StatutBadge({ value }) {
   );
 }
 
-async function triggerDownload(id, e) {
-  e?.stopPropagation();
-  const res = await downloadPdf(id);
-  const blob = new Blob([res.data], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `decharge-${id}.pdf`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+
 
 export default function DechargesPage() {
   const navigate = useNavigate();
@@ -105,7 +95,7 @@ export default function DechargesPage() {
               ) : rows.map((row) => {
                 const did    = _id(row);
                 const statut = _statut(row);
-                const hasPdf = Boolean(row.fichierPdf ?? row.fichier_pdf);
+
                 return (
                   <tr
                     key={did}
@@ -131,9 +121,8 @@ export default function DechargesPage() {
                           Voir
                         </button>
                         <button
-                          style={{ ...btnOutline, opacity: hasPdf ? 1 : 0.5, cursor: hasPdf ? 'pointer' : 'not-allowed' }}
-                          disabled={!hasPdf}
-                          onClick={(e) => hasPdf && triggerDownload(did, e)}
+                          style={btnOutline}
+                          onClick={(e) => { e.stopPropagation(); downloadDechargePdf(did); }}
                         >
                           Imprimer
                         </button>

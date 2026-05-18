@@ -392,7 +392,9 @@ export default function DemandeDetailPage() {
 
   function handleStartEdit() {
     setSelections({});
-    setExpandedLines(new Set());
+    // Auto-expand all lines so gestionnaire sees stock info immediately
+    const allIds = new Set((demande.lignes || []).map((l) => _ligneId(l)));
+    setExpandedLines(allIds);
     setSelectedStatut('en_cours');
     setMotifRefus(demande.motifRefus ?? demande.motif_refus ?? '');
     setCreatedDechargeId(null);
@@ -431,7 +433,7 @@ export default function DemandeDetailPage() {
   const isPending        = validateMutation.isPending;
   const saveDisabled = !isEditing || isPending || selectedStatut === 'en_cours'
     || (selectedStatut === 'refusee' && !motifRefus.trim());
-  const canExpand  = isEditing;
+  const canExpand  = true;
   const dechargeId = createdDechargeId ?? demande.decharge_id ?? demande.dechargeId ?? null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -481,15 +483,37 @@ export default function DemandeDetailPage() {
         </div>
       )}
 
-      {/* ── Info grid ── */}
+      {/* ── Demandeur & Hierarchy info ── */}
       <div style={card}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <InfoField label="Demandeur"
+        <h3 style={sectionTitle}>Informations du demandeur</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 14 }}>
+          <InfoField label="Nom complet"
             value={demande.chefDemandeur?.nomComplet ?? demande.chef_demandeur?.nom_complet} />
+          <InfoField label="Email"
+            value={demande.chefDemandeur?.email ?? demande.chef_demandeur?.email} />
+          <InfoField label="Rôle"
+            value={demande.chefDemandeur?.roleNom ?? demande.chef_demandeur?.role_nom ?? 'Chef de service'} />
+          <InfoField label="Service (utilisateur)"
+            value={demande.chefDemandeur?.serviceNom ?? demande.chef_demandeur?.service_nom} />
+        </div>
+      </div>
+
+      {/* ── Détails de la demande ── */}
+      <div style={card}>
+        <h3 style={sectionTitle}>Détails de la demande</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 14 }}>
           <InfoField label="Date de demande"
             value={fmtDate(demande.dateDemande ?? demande.date_demande)} />
+          <InfoField label="Établissement"
+            value={demande.service?.etablissementNom ?? demande.service?.etablissement_nom} />
+          <InfoField label="Bâtiment"
+            value={demande.service?.batimentNom ?? demande.service?.batiment_nom} />
+          <InfoField label="Service demandé"
+            value={demande.service?.nomService ?? demande.service?.nom_service} />
+          <InfoField label="Bénéficiaire"
+            value={demande.beneficiaire ? `${demande.beneficiaire.nom} (${demande.beneficiaire.roleType ?? demande.beneficiaire.role_type ?? ''})` : (demande.beneficiaireNom ?? demande.beneficiaire_nom)} />
           <InfoField label="Catégorie"      value={categorieName} />
-          <InfoField label="Sous-Catégorie" value={sousCatName}   />
+          <InfoField label="Sous-Catégorie" value={sousCatName} />
         </div>
       </div>
 
@@ -528,6 +552,7 @@ export default function DemandeDetailPage() {
                     <div style={{ fontSize: 13, color: T.textMuted, marginTop: 4 }}>Référence : {ref}</div>
                     <div style={{ fontSize: 13, color: T.textMuted, marginTop: 2 }}>
                       Qté demandée : <strong style={{ color: T.textMid }}>{_qd(ligne)}</strong>
+                      {isCons && <> · Stock : <strong style={{ color: (stockMap.get(Number(_rid(ligne))) ?? 0) > 0 ? T.green : T.red }}>{stockMap.get(Number(_rid(ligne))) ?? 0}</strong></>}
                     </div>
                   </div>
                   <AvailBar pct={pct} />
@@ -566,6 +591,40 @@ export default function DemandeDetailPage() {
           </span>
         </div>
       </div>
+
+      {/* ── Decision Summary (visible in edit mode) ── */}
+      {isEditing && (() => {
+        const lignes = demande.lignes || [];
+        let totalDem = 0, totalAcc = 0;
+        lignes.forEach((l) => {
+          totalDem += _qd(l);
+          totalAcc += selections[_ligneId(l)]?.quantite_accordee ?? 0;
+        });
+        const decisionLabel = selectedStatut === 'refusee' ? 'Refus total'
+          : totalAcc === 0 ? 'Aucune quantité accordée'
+          : totalAcc >= totalDem ? `Accord total (${totalAcc}/${totalDem})`
+          : `Accord partiel (${totalAcc}/${totalDem})`;
+        const decisionColor = selectedStatut === 'refusee' ? T.red
+          : totalAcc === 0 ? T.textMuted
+          : totalAcc >= totalDem ? T.green : T.orange;
+        return (
+          <div style={{
+            ...card,
+            background: '#f0f9ff',
+            border: `1px solid ${decisionColor}40`,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 500, color: T.textMuted }}>Décision : </span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: decisionColor }}>{decisionLabel}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 20 }}>
+              <span style={{ fontSize: 13, color: T.textMuted }}>Demandé : <strong style={{ color: T.textDark }}>{totalDem}</strong></span>
+              <span style={{ fontSize: 13, color: T.textMuted }}>Accordé : <strong style={{ color: decisionColor }}>{totalAcc}</strong></span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Statut de la demande ── */}
       <div style={card}>

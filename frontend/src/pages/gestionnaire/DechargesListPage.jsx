@@ -93,6 +93,7 @@ export default function DechargesListPage() {
   const [filterStatut, setFilterStatut] = useState('');
   const [dateFrom,     setDateFrom]     = useState('');
   const [dateTo,       setDateTo]       = useState('');
+  const [showFilters,  setShowFilters]  = useState(false);
   const [pendingId,    setPendingId]    = useState(null);
   const [hoveredId,    setHoveredId]    = useState(null);
 
@@ -119,20 +120,50 @@ export default function DechargesListPage() {
       .sort((a, b) => new Date(_date(b) ?? 0) - new Date(_date(a) ?? 0));
   }, [dechargesQuery.data?.data, filterStatut, dateFrom, dateTo]);
 
+  const IconFilter = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+    </svg>
+  );
+
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <select value={filterStatut} onChange={(e) => setFilterStatut(e.target.value)} style={filterInput}>
-          <option value="">Tous statuts</option>
-          <option value="non_generee">Non généré</option>
-          <option value="en_attente">Non signé</option>
-          <option value="valide">Signé</option>
-          <option value="rejete">Rejeté</option>
-        </select>
-        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={filterInput} />
-        <input type="date" value={dateTo}   onChange={(e) => setDateTo(e.target.value)}   style={filterInput} />
+      {/* Header action */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: T.textDark, margin: 0 }}>Bons de décharge</h2>
+        <button
+          style={{
+            border: `1px solid ${T.border}`,
+            borderRadius: T.radiusSm,
+            padding: '8px 16px',
+            background: showFilters ? '#e2e8f0' : '#fff',
+            color: T.textDark,
+            cursor: 'pointer',
+            fontWeight: 600,
+            fontSize: 13,
+            display: 'inline-flex',
+            alignItems: 'center',
+          }}
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          <IconFilter /> {showFilters ? 'Masquer filtres' : 'Filtres'}
+        </button>
       </div>
+
+      {/* Filters */}
+      {showFilters && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '12px 16px', background: T.bgSubtle, borderRadius: T.radius, border: `1px solid ${T.border}` }}>
+          <select value={filterStatut} onChange={(e) => setFilterStatut(e.target.value)} style={filterInput}>
+            <option value="">Tous statuts</option>
+            <option value="non_generee">Non généré</option>
+            <option value="en_attente">Non signé</option>
+            <option value="valide">Signé</option>
+            <option value="rejete">Rejeté</option>
+          </select>
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={filterInput} />
+          <input type="date" value={dateTo}   onChange={(e) => setDateTo(e.target.value)}   style={filterInput} />
+        </div>
+      )}
 
       {/* Table */}
       <div style={{ border: `1px solid ${T.border}`, borderRadius: T.radius, background: T.bgWhite, overflow: 'hidden' }}>

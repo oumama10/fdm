@@ -6,7 +6,7 @@ from rest_framework.filters import SearchFilter
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
-from apps.core.permissions import IsGestionnaireOrAdmin
+from apps.core.permissions import IsGestionnaireOrAdmin, IsGestionnaireOrFinanciereOrAdmin
 
 from .models import (
     Categorie,
@@ -180,7 +180,7 @@ class RessourceViewSet(viewsets.ModelViewSet):
 
 class StockViewSet(_ReadUpdateViewSet):
     serializer_class = StockSerializer
-    permission_classes = [IsGestionnaireOrAdmin]
+    permission_classes = [IsGestionnaireOrFinanciereOrAdmin]
 
     def get_queryset(self):
         qs = Stock.objects.select_related("id_ressource").all()

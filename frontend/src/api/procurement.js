@@ -32,3 +32,5 @@ export const getLotsByMarche = (marcheId) =>
 export const getLots = (params = {}) => apiClient.get('/procurement/lots/', { params });
 export const confirmerReception = (marcheId) =>
 	apiClient.post(`/procurement/marches/${marcheId}/confirmer-reception/`);
+export const refuserMarche = (marcheId, data = {}) =>
+	apiClient.post(`/procurement/marches/${marcheId}/refuser/`, data);

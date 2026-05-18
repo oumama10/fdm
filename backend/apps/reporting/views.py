@@ -258,10 +258,18 @@ class DashboardView(APIView):
         )
         stock_alerts_count = cons_alerts + bi_alerts
 
-        total_articles = InstanceRessource.objects.count()
-        total_articles_last_month = InstanceRessource.objects.filter(
-            date_acquisition__lt=current_month
-        ).count()
+        total_consommables = Stock.objects.aggregate(t=Sum("quantite_disponible"))["t"] or 0
+        total_biens = InstanceRessource.objects.filter(statut="en_stock").count()
+        total_articles = total_consommables + total_biens
+
+        entrees_ce_mois = MouvementStock.objects.filter(
+            date_mouvement__gte=current_month, type_mouvement="entree"
+        ).aggregate(t=Sum("quantite"))["t"] or 0
+        sorties_ce_mois = MouvementStock.objects.filter(
+            date_mouvement__gte=current_month, type_mouvement__in=["sortie", "rebut"]
+        ).aggregate(t=Sum("quantite"))["t"] or 0
+        
+        total_articles_last_month = total_articles - entrees_ce_mois + sorties_ce_mois
 
         demandes_en_cours = Demande.objects.filter(statut="en_attente").count()
         demandes_en_cours_last_month = Demande.objects.filter(
@@ -299,12 +307,10 @@ class DashboardView(APIView):
             id_categorie__actif=True,
         ).count()
 
-        marches_en_attente = MarcheBC.objects.filter(
-            statut="en_attente_livraison"
-        ).count()
 
         marches_deadline_proche = (
             AlerteDelai.objects.filter(
+                id_marche__type_acquisition="marche",
                 date_echeance__lte=today + timedelta(days=7),
                 acquitte=False,
             )
@@ -398,6 +404,22 @@ class DashboardView(APIView):
 
         recent_activity = _build_dashboard_activity()
 
+        visible_attente_q = Q(statut="en_attente_livraison") & (
+            Q(source="manuel") | Q(source="import", import_excel__statut_import="en_revision")
+        )
+
+        marches_en_attente = MarcheBC.objects.filter(
+            visible_attente_q, type_acquisition="marche"
+        ).count()
+
+        bc_en_attente = MarcheBC.objects.filter(
+            visible_attente_q, type_acquisition="bon_commande"
+        ).count()
+
+        dons_en_attente = MarcheBC.objects.filter(
+            visible_attente_q, type_acquisition="donation"
+        ).count()
+
         return Response(
             {
                 "kpis": {
@@ -408,11 +430,15 @@ class DashboardView(APIView):
                     "decharges_en_attente": decharges_en_attente_signature,
                     "stock_alerts": stock_alerts_count,
                     "marches_en_attente": marches_en_attente,
+                    "bc_en_attente": bc_en_attente,
+                    "dons_en_attente": dons_en_attente,
                     "marches_delai_proche": marches_deadline_proche,
                 },
                 "stock_alerts": stock_alerts_count,
                 "stock_alerts_count": stock_alerts_count,
                 "marches_en_attente": marches_en_attente,
+                "bc_en_attente": bc_en_attente,
+                "dons_en_attente": dons_en_attente,
                 "marches_delai_proche": marches_deadline_proche,
                 "marches_deadline_proche": marches_deadline_proche,
                 "demandes_en_cours": demandes_en_cours,

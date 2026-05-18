@@ -56,6 +56,7 @@ export default function DemandesListPage() {
   const [service,  setService]  = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo,   setDateTo]   = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   const demandesQuery = useQuery({
     queryKey: ['demandes', 'list'],
@@ -83,50 +84,80 @@ export default function DemandesListPage() {
       .sort((a, b) => new Date(_date(b) || 0) - new Date(_date(a) || 0));
   }, [demandesQuery.data?.data, statut, urgence, service, dateFrom, dateTo]);
 
+  const IconFilter = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+    </svg>
+  );
+
   return (
     <div style={{ display: 'grid', gap: 16, paddingBottom: 40 }}>
+      {/* Header action */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: T.textDark, margin: 0 }}>Demandes de matériel</h2>
+        <button
+          style={{
+            border: `1px solid ${T.border}`,
+            borderRadius: T.radiusSm,
+            padding: '8px 16px',
+            background: showFilters ? '#e2e8f0' : '#fff',
+            color: T.textDark,
+            cursor: 'pointer',
+            fontWeight: 600,
+            fontSize: 13,
+            display: 'inline-flex',
+            alignItems: 'center',
+          }}
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          <IconFilter /> {showFilters ? 'Masquer filtres' : 'Filtres'}
+        </button>
+      </div>
+
       {/* ── Table shell ── */}
       <div style={tableShell}>
 
         {/* Toolbar / filters */}
-        <div style={toolbar}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
-            <select value={statut} onChange={(e) => setStatut(e.target.value)} style={selectStyle}>
-              <option value="">Tous statuts</option>
-              <option value="en_cours">En cours</option>
-              <option value="partielle">Partielle</option>
-              <option value="totale">Totale</option>
-              <option value="refusee">Refusée</option>
-            </select>
+        {showFilters && (
+          <div style={toolbar}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+              <select value={statut} onChange={(e) => setStatut(e.target.value)} style={selectStyle}>
+                <option value="">Tous statuts</option>
+                <option value="en_cours">En cours</option>
+                <option value="partielle">Partielle</option>
+                <option value="totale">Totale</option>
+                <option value="refusee">Refusée</option>
+              </select>
 
-            <select value={urgence} onChange={(e) => setUrgence(e.target.value)} style={selectStyle}>
-              <option value="">Toutes urgences</option>
-              <option value="normal">Normal</option>
-              <option value="moyen">Moyen</option>
-              <option value="urgent">Urgent</option>
-            </select>
+              <select value={urgence} onChange={(e) => setUrgence(e.target.value)} style={selectStyle}>
+                <option value="">Toutes urgences</option>
+                <option value="normal">Normal</option>
+                <option value="moyen">Moyen</option>
+                <option value="urgent">Urgent</option>
+              </select>
 
-            <select value={service} onChange={(e) => setService(e.target.value)} style={selectStyle}>
-              <option value="">Tous services</option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>{s.nom}</option>
-              ))}
-            </select>
+              <select value={service} onChange={(e) => setService(e.target.value)} style={selectStyle}>
+                <option value="">Tous services</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>{s.nom}</option>
+                ))}
+              </select>
 
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              style={selectStyle}
-            />
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              style={selectStyle}
-            />
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                style={selectStyle}
+              />
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                style={selectStyle}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Table */}
         {demandesQuery.isLoading ? (

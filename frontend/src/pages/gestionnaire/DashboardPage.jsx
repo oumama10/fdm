@@ -13,6 +13,9 @@ import {
   Package,
   TrendingDown,
   TrendingUp,
+  ShoppingBag,
+  Clock,
+  Gift,
 } from 'lucide-react';
 import NotificationBell from '../../components/layout/NotificationBell';
 import {
@@ -41,7 +44,7 @@ const URGENCE_BADGES = {
 };
 
 const DEMANDE_STATUT_BADGES = {
-  en_cours: { label: 'En cours', bg: 'bg-brand-100', text: 'text-brand-700' },
+  en_attente: { label: 'En attente', bg: 'bg-brand-100', text: 'text-brand-700' },
   partielle: { label: 'Partielle', bg: 'bg-gold-100', text: 'text-gold-600' },
   totale: { label: 'Totale', bg: 'bg-green-50', text: 'text-green-700' },
   refusee: { label: 'Refusée', bg: 'bg-red-50', text: 'text-red-600' },
@@ -156,6 +159,10 @@ export default function DashboardPage() {
     0,
   );
   const stockAlerts = pick(kpis?.stock_alerts, kpis?.stockAlerts, kpis?.stock_alerts_count, kpis?.stockAlertsCount, dashboard.stock_alerts, dashboard.stockAlerts, dashboard.stock_alerts_count, dashboard.stockAlertsCount, 0);
+  const marchesEnAttente = pick(kpis?.marches_en_attente, kpis?.marchesEnAttente, dashboard.marches_en_attente, dashboard.marchesEnAttente, 0);
+  const bcEnAttente = pick(kpis?.bc_en_attente, kpis?.bcEnAttente, dashboard.bc_en_attente, dashboard.bcEnAttente, 0);
+  const donsEnAttente = pick(kpis?.dons_en_attente, kpis?.donsEnAttente, dashboard.dons_en_attente, dashboard.donsEnAttente, 0);
+  const marchesDelaiProche = pick(kpis?.marches_delai_proche, kpis?.marchesDelaiProche, dashboard.marches_delai_proche, dashboard.marchesDelaiProche, 0);
 
   const acquisitionsData = useMemo(
     () => (dashboard.monthly_acquisitions ?? dashboard.monthlyAcquisitions ?? []).map((item) => ({
@@ -189,6 +196,11 @@ export default function DashboardPage() {
   const recentActivity = useMemo(
     () => dashboard.recent_activity ?? dashboard.recentActivity ?? [],
     [dashboard.recent_activity, dashboard.recentActivity],
+  );
+
+  const top5Consommables = useMemo(
+    () => dashboard.top_5_consommables ?? dashboard.top5Consommables ?? [],
+    [dashboard.top_5_consommables, dashboard.top5Consommables],
   );
 
   const greeting = getGreeting();
@@ -239,6 +251,46 @@ export default function DashboardPage() {
       iconColor: 'text-red-500',
       link: '/gestionnaire/stock',
       accent: '#ef4444',
+    },
+    {
+      label: 'Marchés en attente',
+      value: marchesEnAttente,
+      delta: null,
+      icon: ShoppingBag,
+      iconBg: 'bg-purple-50',
+      iconColor: 'text-purple-600',
+      link: '/gestionnaire/marches',
+      accent: '#a855f7',
+    },
+    {
+      label: 'Bons Commande en attente',
+      value: bcEnAttente,
+      delta: null,
+      icon: ClipboardList,
+      iconBg: 'bg-indigo-50',
+      iconColor: 'text-indigo-600',
+      link: '/gestionnaire/bons-commande',
+      accent: '#6366f1',
+    },
+    {
+      label: 'Dons en attente',
+      value: donsEnAttente,
+      delta: null,
+      icon: Gift,
+      iconBg: 'bg-emerald-50',
+      iconColor: 'text-emerald-600',
+      link: '/gestionnaire/dons',
+      accent: '#10b981',
+    },
+    {
+      label: 'Délai marchés proche',
+      value: marchesDelaiProche,
+      delta: null,
+      icon: Clock,
+      iconBg: 'bg-orange-50',
+      iconColor: 'text-orange-600',
+      link: '/gestionnaire/marches',
+      accent: '#f97316',
     },
   ];
 
@@ -312,7 +364,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {dashboardQuery.isLoading
           ? Array.from({ length: 4 }).map((_, index) => <SkeletonCard key={`kpi-skeleton-${index}`} />)
           : kpiCards.map((kpi) => (
@@ -624,6 +676,41 @@ export default function DashboardPage() {
             ) : (
               <div className="px-5 py-8 text-center">
                 <p className="text-[12px] text-black/30">Aucune activité récente</p>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Top 5 Consommables */}
+        <div className="overflow-hidden rounded-[24px] border border-white/70 bg-white/85 shadow-[0_12px_32px_rgba(15,23,42,0.05)] backdrop-blur-sm">
+          <div className="flex items-center justify-between border-b border-black/[0.04] px-5 py-4">
+            <h3 className="font-['Bricolage_Grotesque'] text-[14px] font-semibold tracking-[-0.02em] text-ink">Top Consommables (Stock bas)</h3>
+            <Package size={15} className="text-black/25" />
+          </div>
+
+          <div className="divide-y divide-black/[0.04]">
+            {top5Consommables.length > 0 ? (
+              top5Consommables.map((item) => (
+                <div key={item.id} className="px-5 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12px] font-medium text-ink">{item.designation}</p>
+                      <p className="mt-0.5 text-[11px] text-black/40">
+                        Seuil: {item.seuil_alerte ?? '—'}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className={`text-[13px] font-jetbrains font-bold ${item.alerte ? 'text-red-600' : 'text-green-600'}`}>
+                        {item.quantite_disponible}
+                      </p>
+                      <p className="text-[10px] text-black/30 uppercase tracking-wider">Restants</p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="px-5 py-8 text-center">
+                <p className="text-[12px] text-black/30">Aucun consommable enregistré</p>
               </div>
             )}
           </div>

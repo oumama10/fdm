@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
-import { downloadPdf, getDecharges } from '../../api/decharge';
+import { downloadDechargePdf, getDecharges } from '../../api/decharge';
 import { getNotifications } from '../../api/alerts';
 import { getDemandeById } from '../../api/requests';
 
@@ -139,17 +139,10 @@ export default function DemandeStatusPage() {
       .sort((a, b) => new Date(b.dateEnvoi ?? b.date_envoi ?? 0) - new Date(a.dateEnvoi ?? a.date_envoi ?? 0));
   }, [notificationsQuery.data?.data, id]);
 
-  async function handleDownload() {
+  function handleDownload() {
     const did = _did(decharge);
     if (!did) return;
-    const response = await downloadPdf(did);
-    const blob = new Blob([response.data], { type: 'application/pdf' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `decharge-${did}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadDechargePdf(did);
   }
 
   // ── Guards ────────────────────────────────────────────────────────────────

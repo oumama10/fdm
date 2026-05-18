@@ -19,6 +19,7 @@ export const MARCHE_STATUT_LABELS = {
   en_attente_livraison:  { label: 'En attente de livraison', bg: 'bg-amber-50',  text: 'text-amber-700' },
   receptionne_et_stocke: { label: 'Réceptionné',             bg: 'bg-green-50',  text: 'text-green-700' },
   non_conforme:          { label: 'Non conforme',            bg: 'bg-red-50',    text: 'text-red-700'   },
+  refuse:                { label: 'Refusé',                  bg: 'bg-red-50',    text: 'text-red-700'   },
 };
 
 export const TYPE_ACQUISITION_LABELS = {

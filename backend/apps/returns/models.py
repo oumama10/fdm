@@ -5,6 +5,8 @@ class RetourMateriel(models.Model):
     MOTIF_CHOICES = [
         ("panne", "panne"),
         ("inutilise", "inutilise"),
+        ("endommage", "endommage"),
+        ("autre", "autre"),
     ]
     DECISION_CHOICES = [
         ("", ""),

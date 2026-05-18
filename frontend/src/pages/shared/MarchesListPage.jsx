@@ -38,6 +38,7 @@ export default function MarchesListPage({ fixedType = null }) {
   const [filterFournisseur, setFilterFournisseur] = useState('');
   const [filterDateFrom,    setFilterDateFrom]    = useState('');
   const [filterDateTo,      setFilterDateTo]      = useState('');
+  const [showFilters,       setShowFilters]       = useState(false);
 
   const marchesQuery = useQuery({
     queryKey: ['procurement', 'marches', fixedType || ''],
@@ -115,48 +116,80 @@ export default function MarchesListPage({ fixedType = null }) {
     return Array.from(map.entries()).map(([id, nom]) => ({ id, nom }));
   }, [marchesQuery.data?.data]);
 
+  const IconFilter = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+    </svg>
+  );
+
   return (
     <div style={{ display: 'grid', gap: 16, paddingBottom: 40 }}>
       {/* ── Header action ── */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {canCreate && (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: T.textDark, margin: 0 }}>{pageTitle}</h2>
+        <div style={{ display: 'flex', gap: 10 }}>
           <button
-            style={btnPrimary}
-            onClick={() => navigate(`${basePrefix}/marches/nouveau?type=${fixedType || 'marche'}`)}
+            style={{
+              ...btnSecondary,
+              background: showFilters ? '#e2e8f0' : '#fff',
+              color: T.textDark,
+              border: `1px solid ${T.border}`,
+              borderRadius: T.radiusSm,
+              padding: '8px 16px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: 13,
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+            onClick={() => setShowFilters(!showFilters)}
           >
-            + {buttonLabel}
+            <IconFilter /> {showFilters ? 'Masquer filtres' : 'Filtres'}
           </button>
-        )}
+          {canCreate && (
+            <button
+              style={btnPrimary}
+              onClick={() => {
+                const basePath = fixedType === 'bon_commande' ? 'bons-commande' : fixedType === 'donation' ? 'dons' : 'marches';
+                navigate(`${basePrefix}/${basePath}/nouveau?type=${fixedType || 'marche'}`);
+              }}
+            >
+              + {buttonLabel}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Table shell ── */}
       <div style={tableShell}>
 
         {/* Toolbar / filters */}
-        <div style={toolbar}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-            <select style={selectStyle} value={filterFournisseur} onChange={(e) => setFilterFournisseur(e.target.value)}>
-              <option value="">Tous fournisseurs</option>
-              {fournisseurs.map((f) => (
-                <option key={f.id} value={f.id}>{f.nom}</option>
-              ))}
-            </select>
-            <input
-              type="date"
-              style={selectStyle}
-              value={filterDateFrom}
-              onChange={(e) => setFilterDateFrom(e.target.value)}
-              placeholder="Date début"
-            />
-            <input
-              type="date"
-              style={selectStyle}
-              value={filterDateTo}
-              onChange={(e) => setFilterDateTo(e.target.value)}
-              placeholder="Date fin"
-            />
+        {showFilters && (
+          <div style={toolbar}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <select style={selectStyle} value={filterFournisseur} onChange={(e) => setFilterFournisseur(e.target.value)}>
+                <option value="">Tous fournisseurs</option>
+                {fournisseurs.map((f) => (
+                  <option key={f.id} value={f.id}>{f.nom}</option>
+                ))}
+              </select>
+              <input
+                type="date"
+                style={selectStyle}
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                placeholder="Date début"
+              />
+              <input
+                type="date"
+                style={selectStyle}
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                placeholder="Date fin"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Table */}
         {marchesQuery.isLoading ? (
@@ -190,7 +223,12 @@ export default function MarchesListPage({ fixedType = null }) {
                         style={{ cursor: 'pointer', borderTop: `1px solid ${T.border}`, transition: 'background 0.1s' }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = T.bgSubtle; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
-                        onClick={() => { if (m.id_marche) navigate(`${basePrefix}/marches/${m.id_marche}`); }}
+                        onClick={() => {
+                          if (m.id_marche) {
+                            const basePath = fixedType === 'bon_commande' ? 'bons-commande' : fixedType === 'donation' ? 'dons' : 'marches';
+                            navigate(`${basePrefix}/${basePath}/${m.id_marche}`);
+                          }
+                        }}
                       >
                         <td style={{ ...tdStyle, fontWeight: 600, color: T.textDark }}>{m.titre_extrait || '—'}</td>
                         <td style={tdStyle}><StatusBadge map={TYPE_ACQUISITION_LABELS} value={m.type_acquisition} /></td>
@@ -233,4 +271,5 @@ const thStyle     = { padding: '9px 12px', fontSize: 12, fontWeight: 700, color:
 const tdStyle     = { padding: '10px 12px', fontSize: 13, color: T.textMid, verticalAlign: 'middle' };
 const selectStyle = { border: `1px solid ${T.border}`, borderRadius: T.radiusSm, padding: '7px 10px', fontSize: 13, color: T.textDark, background: T.bgWhite, width: '100%' };
 const btnPrimary  = { border: 'none', borderRadius: T.radiusSm, padding: '8px 16px', background: T.blue, color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: 13 };
+const btnSecondary = { border: `1px solid ${T.border}`, borderRadius: T.radiusSm, padding: '8px 16px', background: '#fff', color: T.textDark, cursor: 'pointer', fontWeight: 600, fontSize: 13, display: 'inline-flex', alignItems: 'center' };
 const btnConfirmer = { border: `1px solid #15803d`, borderRadius: T.radiusSm, padding: '5px 10px', background: '#f0fdf4', color: '#15803d', cursor: 'pointer', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' };

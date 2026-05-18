@@ -94,6 +94,7 @@ class MarcheBCSerializer(serializers.ModelSerializer):
             "nom_donateur",
             "organisme_donateur",
             "contact_donateur",
+            "motif_rejet",
         ]
         read_only_fields = [
             "id_marche",

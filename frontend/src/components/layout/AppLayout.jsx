@@ -16,6 +16,7 @@ import {
   Users,
   Tag,
   LogOut,
+  Bell,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import NotificationBell from './NotificationBell';
@@ -28,10 +29,10 @@ const sidebarConfig = {
     { label: 'Bons de Commande', path: '/gestionnaire/bons-commande', icon: ClipboardList },
     { label: 'Dons', path: '/gestionnaire/dons', icon: Gift },
     { label: 'Import Excel', path: '/gestionnaire/import', icon: Upload },
-    { label: 'Données Extraites', path: '/gestionnaire/donnees-extraites', icon: Database },
     { label: 'Demandes', path: '/gestionnaire/demandes', icon: FileText },
     { label: 'Décharges', path: '/gestionnaire/decharges', icon: PackageCheck },
     { label: 'Retours', path: '/gestionnaire/retours', icon: RotateCcw },
+    { label: 'Alertes', path: '/gestionnaire/alertes', icon: Bell },
     { label: 'Statistiques', path: '/gestionnaire/statistiques', icon: BarChart2 },
   ],
   service_financiere: [
@@ -39,6 +40,7 @@ const sidebarConfig = {
     { label: 'Bons de Commande', path: '/financiere/bons-commande', icon: ClipboardList },
     { label: 'Dons', path: '/financiere/dons', icon: Gift },
     { label: 'Import Excel', path: '/financiere/import', icon: Upload },
+    { label: 'Alertes', path: '/financiere/alertes', icon: Bell },
   ],
   chef_service: [
     { label: 'Demandes', path: '/chef/demandes', icon: FileText },
@@ -63,15 +65,16 @@ const PAGE_TITLES = {
   '/gestionnaire/bons-commande': 'Bons de Commande',
   '/gestionnaire/dons': 'Dons',
   '/gestionnaire/import': 'Import Excel',
-  '/gestionnaire/donnees-extraites': 'Données Extraites',
   '/gestionnaire/demandes': 'Demandes',
   '/gestionnaire/decharges': 'Décharges',
   '/gestionnaire/retours': 'Retours',
+  '/gestionnaire/alertes': 'Alertes',
   '/gestionnaire/statistiques': 'Statistiques',
   '/financiere/marches': 'Marchés',
   '/financiere/bons-commande': 'Bons de Commande',
   '/financiere/dons': 'Dons',
   '/financiere/import': 'Import Excel',
+  '/financiere/alertes': 'Alertes',
   '/chef/demandes': 'Demandes',
   '/chef/decharges': 'Décharges',
   '/chef/retours': 'Retours',
