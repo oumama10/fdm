@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { downloadPdf, getDecharges, marquerSigne } from '../../api/decharge';
+import { downloadDechargeAuto, getDecharges, marquerSigne } from '../../api/decharge';
 
 // ── SVG icons ─────────────────────────────────────────────────────────────
 const IconEye = () => (
@@ -57,6 +57,7 @@ function fmtDate(iso) {
 
 const STATUT_BADGE = {
   non_generee: { label: 'Non généré', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+  non_signe:   { label: 'Non signé',  bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
   en_attente:  { label: 'Non signé',  bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
   signe:       { label: 'Signé',      bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
   valide:      { label: 'Signé',      bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
@@ -77,14 +78,7 @@ function StatutBadge({ value }) {
 }
 
 async function triggerDownload(id) {
-  const res = await downloadPdf(id);
-  const blob = new Blob([res.data], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `decharge-${id}.pdf`;
-  a.click();
-  URL.revokeObjectURL(url);
+  await downloadDechargeAuto(id);
 }
 
 export default function DechargesListPage() {
@@ -236,7 +230,7 @@ export default function DechargesListPage() {
                           <IconDownload />
                         </button>
                         {/* Marquer signé — pill, appears on row hover only */}
-                        {statut === 'en_attente' && (
+                        {(statut === 'non_signe' || statut === 'en_attente') && (
                           <button
                             style={{
                               ...btnPill,

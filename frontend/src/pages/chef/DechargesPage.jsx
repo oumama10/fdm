@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
-import { downloadDechargePdf, getDecharges } from '../../api/decharge';
+import { downloadDechargeAuto, getDecharges } from '../../api/decharge';
 
 // ── Design tokens ─────────────────────────────────────────────────────────
 const T = {
@@ -38,6 +38,7 @@ function fmtDate(iso) {
 
 const STATUT_BADGE = {
   non_generee: { label: 'Non généré', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+  non_signe:   { label: 'Non signé',  bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
   en_attente:  { label: 'Non signé',  bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
   signe:       { label: 'Signé',      bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
   valide:      { label: 'Signé',      bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
@@ -122,7 +123,7 @@ export default function DechargesPage() {
                         </button>
                         <button
                           style={btnOutline}
-                          onClick={(e) => { e.stopPropagation(); downloadDechargePdf(did); }}
+                          onClick={(e) => { e.stopPropagation(); downloadDechargeAuto(did); }}
                         >
                           Imprimer
                         </button>

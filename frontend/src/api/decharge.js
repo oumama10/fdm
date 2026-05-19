@@ -48,6 +48,54 @@ export const downloadDechargePdf = async (id, type = null) => {
 };
 export const getDechargeTypes = (id) => apiClient.get(`/decharge/decharges/${id}/types/`);
 export const regeneratePdf = (id) => apiClient.post(`/decharge/decharges/${id}/regenerate_pdf/`);
+
+// Trigger a blob as a browser download without any async gap after the click.
+// URL is revoked after 60 s to give the browser time to start the download.
+function _triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+// Dedup guard: prevents React StrictMode double-fire (and accidental double-click)
+// from triggering two concurrent downloads for the same décharge.
+const _inFlight = new Set();
+
+// Single entry-point for all download buttons.
+// Mixed décharge → fetch both PDFs in parallel, then trigger the two downloads
+// back-to-back with no async gap between them so the browser treats them as
+// one batch and does not block the second with its multi-download guard.
+export const downloadDechargeAuto = async (id) => {
+  if (_inFlight.has(id)) return;
+  _inFlight.add(id);
+  try {
+    const typesRes = await apiClient.get(`/decharge/decharges/${id}/types/`);
+    // djangorestframework-camel-case converts snake_case → camelCase in responses
+    const { isMixed } = typesRes.data;
+
+    if (isMixed) {
+      const [resBI, resC] = await Promise.all([
+        apiClient.get(`/decharge/decharges/${id}/pdf/?type=bien_inventaire`, { responseType: 'blob' }),
+        apiClient.get(`/decharge/decharges/${id}/pdf/?type=consommable`, { responseType: 'blob' }),
+      ]);
+      // Synchronous back-to-back — no await between the two clicks
+      _triggerBlobDownload(resBI.data, `decharge-${id}-biens-inventaire.pdf`);
+      _triggerBlobDownload(resC.data, `decharge-${id}-consommables.pdf`);
+    } else {
+      await downloadDechargePdf(id);
+    }
+  } catch (err) {
+    console.error('downloadDechargeAuto:', err);
+    alert('Erreur lors du téléchargement. Veuillez réessayer.');
+  } finally {
+    _inFlight.delete(id);
+  }
+};
 export const getSignatureDetail = (dechargeId) =>
 	apiClient.get(`/decharge/decharges/${dechargeId}/signature/detail/`);
 export const uploadScan = (dechargeId, formData) =>
@@ -59,4 +107,4 @@ export const validerSignature = (dechargeId) =>
 export const rejeterSignature = (dechargeId) =>
 	apiClient.post(`/decharge/decharges/${dechargeId}/signature/rejeter/`);
 export const marquerSigne = (dechargeId) =>
-	apiClient.post(`/decharge/decharges/${dechargeId}/signature/marquer_signe/`);
+	apiClient.post(`/decharge/decharges/${dechargeId}/signature/confirmer/`);

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
-import { downloadDechargePdf, getDecharges } from '../../api/decharge';
+import { downloadDechargeAuto, getDecharges } from '../../api/decharge';
 import { getNotifications } from '../../api/alerts';
 import { getDemandeById } from '../../api/requests';
 
@@ -142,7 +142,7 @@ export default function DemandeStatusPage() {
   function handleDownload() {
     const did = _did(decharge);
     if (!did) return;
-    downloadDechargePdf(did);
+    downloadDechargeAuto(did);
   }
 
   // ── Guards ────────────────────────────────────────────────────────────────

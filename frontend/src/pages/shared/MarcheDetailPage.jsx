@@ -360,17 +360,6 @@ export default function MarcheDetailPage() {
             )}
             <InfoRow label="Fichier" value={importExcel.titre_fichier || importExcel.titreFichier || '—'} />
           </div>
-          {!isFinanciere && (
-            <div style={{ marginTop: 12 }}>
-              <button
-                type="button"
-                style={linkBtnStyle}
-                onClick={() => navigate(`/gestionnaire/donnees-extraites/${importExcel.id_import ?? importExcel.idImport}`)}
-              >
-                Voir dans Données Extraites →
-              </button>
-            </div>
-          )}
         </section>
       )}
 
