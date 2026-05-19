@@ -5,10 +5,9 @@ import { AlertTriangle, Box, Boxes, ChevronRight, Package, Search, X } from 'luc
 import {
   getCategories, getInstances, getRessources, getStock,
   getStockSummary, getSousCategories, updateInstance,
-  setStockSeuil, setRessourceSeuil,
+  setStockSeuil, setRessourceSeuil, getMouvements,
 } from '../../api/resources';
-import { getServices } from '../../api/users';
-import StockDetailModal from './StockDetailModal';
+import { getEtablissements, getServices, getBeneficiaires } from '../../api/users';
 
 const STALE_TIME = 30_000;
 
@@ -430,7 +429,7 @@ export default function StockPage() {
 
       {/* Modals */}
       {selectedConsommable
-        ? <StockDetailModal item={selectedConsommable} onClose={() => setSelectedConsommable(null)} />
+        ? <ConsommableDetailModal item={selectedConsommable} onClose={() => setSelectedConsommable(null)} />
         : null}
       {detailsModalData
         ? <ArticleDetailsModal
@@ -439,6 +438,110 @@ export default function StockPage() {
             onClose={() => setDetailsModalData(null)}
           />
         : null}
+    </div>
+  );
+}
+
+// ── ConsommableDetailModal ────────────────────────────────────────────────
+const MOUVEMENT_CFG = {
+  entree:    { label: '＋ Entrée',     bg: '#dcfce7', color: '#166534', sign: '+', signColor: '#16a34a' },
+  sortie:    { label: '－ Sortie',     bg: '#fee2e2', color: '#991b1b', sign: '-', signColor: '#dc2626' },
+  retour:    { label: '↩ Libération', bg: '#dbeafe', color: '#1e40af', sign: '+', signColor: '#16a34a' },
+  transfert: { label: '⇄ Transfert',  bg: '#f3e8ff', color: '#6b21a8', sign: '',  signColor: '#6b21a8' },
+  rebut:     { label: '✗ Rebut',      bg: '#ffedd5', color: '#9a3412', sign: '-', signColor: '#dc2626' },
+};
+
+function ConsommableDetailModal({ item, onClose }) {
+  const { resource, stock } = item;
+  const resourceId = getResourceId(resource);
+
+  const mouvQuery = useQuery({
+    queryKey: ['resources', 'mouvements', resourceId],
+    queryFn: () => getMouvements({ id_ressource: resourceId }),
+    staleTime: 0,
+  });
+
+  const mouvements = mouvQuery.data?.data?.results ?? mouvQuery.data?.data ?? [];
+  const dispo     = Number(stock?.quantite_disponible ?? stock?.quantiteDisponible ?? 0);
+  const reserve   = Number(stock?.quantite_reservee   ?? stock?.quantiteReservee   ?? 0);
+
+  return (
+    <div style={overlayStyle} onClick={onClose}>
+      <div style={articleModalStyle} onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div style={articleModalHeaderStyle}>
+          <span style={detailsStatStyle}>Disponible : <strong>{formatNumber(dispo)}</strong></span>
+          <span style={detailsStatDividerStyle} />
+          <span style={detailsStatStyle}>Réservé : <strong>{formatNumber(reserve)}</strong></span>
+          <span style={detailsStatDividerStyle} />
+          <span style={articleModalTitleStyle}>{getResourceDesignation(resource)}</span>
+          <button type="button" onClick={onClose} style={closeIconBtnStyle}><X size={16} /></button>
+        </div>
+
+        {/* Body */}
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {mouvQuery.isLoading ? (
+            <div style={{ padding: 32, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+              Chargement…
+            </div>
+          ) : mouvements.length === 0 ? (
+            <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+              Aucun mouvement enregistré pour cet article.
+            </div>
+          ) : (
+            <table style={{ ...tableStyle, margin: 0 }}>
+              <thead>
+                <tr style={headRowStyle}>
+                  <th style={thStyle}>Date</th>
+                  <th style={thStyle}>Type</th>
+                  <th style={thStyle}>Quantité</th>
+                  <th style={thStyle}>Référence</th>
+                  <th style={thStyle}>Lieu d'affectation</th>
+                  <th style={thStyle}>Service</th>
+                  <th style={thStyle}>Destinataire</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mouvements.map((m) => {
+                  const id    = m.id_mouvement ?? m.idMouvement;
+                  const type  = m.type_mouvement ?? m.typeMouvement ?? '';
+                  const cfg   = MOUVEMENT_CFG[type] || { label: type, bg: '#f1f5f9', color: '#475569', sign: '', signColor: '#475569' };
+                  const qty   = Number(m.quantite ?? 0);
+                  const ref   = m.reference ?? null;
+                  const lieu  = m.lieu_affectation ?? m.lieuAffectation ?? null;
+                  const svc   = m.service_affectation ?? m.serviceAffectation ?? null;
+                  const dest  = m.destinataire_affectation ?? m.destinataireAffectation ?? null;
+                  const date  = m.date_mouvement ?? m.dateMouvement;
+                  const qtyDisplay = cfg.sign ? `${cfg.sign}${formatNumber(qty)}` : formatNumber(qty);
+                  return (
+                    <tr key={id} style={{ borderTop: '1px solid #e5e7eb' }}>
+                      <td style={{ ...tdStyle, color: '#64748b', fontSize: 12 }}>
+                        {date ? new Date(date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                      </td>
+                      <td style={tdStyle}>
+                        <span style={{
+                          display: 'inline-block', padding: '2px 8px', borderRadius: 999,
+                          fontSize: 11, fontWeight: 600,
+                          background: cfg.bg, color: cfg.color,
+                        }}>
+                          {cfg.label}
+                        </span>
+                      </td>
+                      <td style={{ ...tdStyle, fontWeight: 600, color: cfg.signColor }}>
+                        {qtyDisplay}
+                      </td>
+                      <td style={{ ...tdStyle, fontSize: 12 }}>{ref ?? '—'}</td>
+                      <td style={{ ...tdStyle, fontSize: 12, color: '#64748b' }}>{lieu ?? '—'}</td>
+                      <td style={{ ...tdStyle, fontSize: 12, color: '#64748b' }}>{svc ?? '—'}</td>
+                      <td style={{ ...tdStyle, fontSize: 12, color: '#64748b' }}>{dest ?? '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -466,18 +569,43 @@ function ArticleDetailsModal({ article, instances, onClose }) {
   );
 }
 
+const TYPE_AFFECTATION_LABELS = {
+  nouvelle_affectation: 'Nouvelle Affectation',
+  reaffectation:        'Réaffectation',
+};
+const TYPE_AFFECTATION_STYLES = {
+  nouvelle_affectation: { background: '#dbeafe', color: '#1e40af' },
+  reaffectation:        { background: '#ffedd5', color: '#9a3412' },
+};
+
 // ── ArticleDetailsPanel ────────────────────────────────────────────────────
 function ArticleDetailsPanel({ instances }) {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState({});
 
-  const servicesQuery = useQuery({
-    queryKey: ['users', 'services'],
-    queryFn: getServices,
-    staleTime: STALE_TIME,
+  const etabQuery = useQuery({
+    queryKey: ['hierarchy', 'etablissements'],
+    queryFn: getEtablissements,
+    staleTime: 300_000,
   });
-  const services = servicesQuery.data?.data || [];
+  const etablissements = etabQuery.data?.data || [];
+
+  const svcQuery = useQuery({
+    queryKey: ['hierarchy', 'services-by-etab', draft.id_lieu_affectation],
+    queryFn: () => getServices({ id_etablissement: draft.id_lieu_affectation }),
+    enabled: Boolean(draft.id_lieu_affectation),
+    staleTime: 300_000,
+  });
+  const editServices = svcQuery.data?.data || [];
+
+  const benefQuery = useQuery({
+    queryKey: ['hierarchy', 'beneficiaires', draft.id_service_actuel],
+    queryFn: () => getBeneficiaires({ id_service: draft.id_service_actuel }),
+    enabled: Boolean(draft.id_service_actuel),
+    staleTime: 300_000,
+  });
+  const editBeneficiaires = benefQuery.data?.data || [];
 
   const patchMutation = useMutation({
     mutationFn: ({ id, data }) => updateInstance(id, data),
@@ -489,11 +617,18 @@ function ArticleDetailsPanel({ instances }) {
 
   function startEdit(inst) {
     setEditingId(getInstanceId(inst));
+    const lieuId = inst.idLieuAffectation ?? inst.id_lieu_affectation
+      ?? inst.lieuAffectation?.idEtablissement ?? inst.lieu_affectation?.id_etablissement ?? '';
+    const svcId  = inst.idServiceActuel ?? inst.id_service_actuel
+      ?? inst.serviceActuel?.idService ?? inst.service_actuel?.id_service ?? '';
+    const destId = inst.idDestinataire ?? inst.id_destinataire
+      ?? inst.destinataire?.idBeneficiaire ?? inst.destinataire?.id_beneficiaire ?? '';
     setDraft({
-      statut: inst.statut ?? '',
-      etat: inst.etat ?? '',
-      localisation_actuelle: inst.localisationActuelle ?? inst.localisation_actuelle ?? '',
-      id_service_actuel: inst.idServiceActuel ?? inst.id_service_actuel ?? '',
+      statut:              inst.statut ?? '',
+      etat:                inst.etat ?? '',
+      id_lieu_affectation: lieuId ? Number(lieuId) : '',
+      id_service_actuel:   svcId  ? Number(svcId)  : '',
+      id_destinataire:     destId ? Number(destId) : '',
     });
   }
 
@@ -511,8 +646,10 @@ function ArticleDetailsPanel({ instances }) {
             <th style={thStyle}>N° inventaire</th>
             <th style={thStyle}>État</th>
             <th style={thStyle}>Statut</th>
-            <th style={thStyle}>Service affecté</th>
-            <th style={thStyle}>Localisation</th>
+            <th style={thStyle}>Lieu d&apos;affectation</th>
+            <th style={thStyle}>Service</th>
+            <th style={thStyle}>Destinataire</th>
+            <th style={thStyle}>Type d&apos;affectation</th>
             <th style={thStyle}>Date acquisition</th>
             <th style={thStyle}>Réf. marché</th>
             <th style={{ ...thStyle, width: 160 }}>Actions</th>
@@ -522,9 +659,12 @@ function ArticleDetailsPanel({ instances }) {
           {instances.map((inst) => {
             const id = getInstanceId(inst);
             const isEditing = id === editingId;
+            const typeAff = inst.typeAffectation ?? inst.type_affectation ?? '';
             return (
               <tr key={id} style={{ borderTop: '1px solid #e5e7eb', background: isEditing ? '#f8fafc' : '#fff' }}>
                 <td style={tdStyle}><code style={monoStyle}>{getInstanceNumeroInventaire(inst)}</code></td>
+
+                {/* État */}
                 <td style={tdStyle}>
                   {isEditing
                     ? <select value={draft.etat} onChange={(e) => setDraft({ ...draft, etat: e.target.value })} style={inlineSelectStyle}>
@@ -532,6 +672,8 @@ function ArticleDetailsPanel({ instances }) {
                       </select>
                     : <Badge tone={ETAT_TONES[inst.etat]}>{ETAT_LABELS[inst.etat] || inst.etat || '—'}</Badge>}
                 </td>
+
+                {/* Statut */}
                 <td style={tdStyle}>
                   {isEditing
                     ? <select value={draft.statut} onChange={(e) => setDraft({ ...draft, statut: e.target.value })} style={inlineSelectStyle}>
@@ -539,32 +681,80 @@ function ArticleDetailsPanel({ instances }) {
                       </select>
                     : <Badge tone={STATUT_TONES[inst.statut]}>{STATUT_LABELS[inst.statut] || inst.statut || '—'}</Badge>}
                 </td>
+
+                {/* Lieu d'affectation */}
+                <td style={tdStyle}>
+                  {isEditing
+                    ? <select
+                        value={draft.id_lieu_affectation ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value ? Number(e.target.value) : '';
+                          setDraft({ ...draft, id_lieu_affectation: val, id_service_actuel: '', id_destinataire: '' });
+                        }}
+                        style={inlineSelectStyle}
+                      >
+                        <option value="">— Choisir —</option>
+                        {etablissements.map((et) => {
+                          const eid = et.idEtablissement ?? et.id_etablissement;
+                          return <option key={eid} value={eid}>{et.nom}</option>;
+                        })}
+                      </select>
+                    : getLieuAffectation(inst) || '—'}
+                </td>
+
+                {/* Service */}
                 <td style={tdStyle}>
                   {isEditing
                     ? <select
                         value={draft.id_service_actuel ?? ''}
-                        onChange={(e) => setDraft({ ...draft, id_service_actuel: e.target.value ? Number(e.target.value) : null })}
+                        onChange={(e) => {
+                          const val = e.target.value ? Number(e.target.value) : '';
+                          setDraft({ ...draft, id_service_actuel: val, id_destinataire: '' });
+                        }}
+                        disabled={!draft.id_lieu_affectation}
                         style={inlineSelectStyle}
                       >
-                        <option value="">—</option>
-                        {services.map((s) => {
-                          const id = s.idService ?? s.id_service;
+                        <option value="">— Choisir —</option>
+                        {editServices.map((s) => {
+                          const sid = s.idService ?? s.id_service;
                           const nom = s.nomService ?? s.nom_service;
-                          return <option key={id} value={id}>{nom}</option>;
+                          return <option key={sid} value={sid}>{nom}</option>;
                         })}
                       </select>
                     : getServiceName(inst) || '—'}
                 </td>
+
+                {/* Destinataire */}
                 <td style={tdStyle}>
                   {isEditing
-                    ? <input
-                        value={draft.localisation_actuelle}
-                        onChange={(e) => setDraft({ ...draft, localisation_actuelle: e.target.value })}
-                        placeholder="Localisation…"
-                        style={inlineInputStyle}
-                      />
-                    : getLocalisationActuelle(inst) || '—'}
+                    ? <select
+                        value={draft.id_destinataire ?? ''}
+                        onChange={(e) => setDraft({ ...draft, id_destinataire: e.target.value ? Number(e.target.value) : '' })}
+                        disabled={!draft.id_service_actuel}
+                        style={inlineSelectStyle}
+                      >
+                        <option value="">— Choisir —</option>
+                        {editBeneficiaires.map((b) => {
+                          const bid = b.idBeneficiaire ?? b.id_beneficiaire;
+                          return <option key={bid} value={bid}>{b.nom}</option>;
+                        })}
+                      </select>
+                    : getDestinataireLabel(inst) || '—'}
                 </td>
+
+                {/* Type d'affectation — read-only badge, set automatically */}
+                <td style={tdStyle}>
+                  {typeAff
+                    ? <span style={{
+                        display: 'inline-block', padding: '2px 8px', borderRadius: 999,
+                        fontSize: 11, fontWeight: 600,
+                        ...TYPE_AFFECTATION_STYLES[typeAff],
+                      }}>
+                        {TYPE_AFFECTATION_LABELS[typeAff] || typeAff}
+                      </span>
+                    : '—'}
+                </td>
+
                 <td style={tdStyle}>{getDateAcquisitionDisplay(inst) || '—'}</td>
                 <td style={tdStyle}>{getReferenceMarche(inst) || '—'}</td>
                 <td style={tdStyle}>
@@ -731,11 +921,17 @@ function getResourceSousCategorieId(r) {
 function getInstanceId(inst) { return inst?.id_instance ?? inst?.idInstance ?? null; }
 function getInstanceNumeroInventaire(inst) { return inst?.numero_inventaire ?? inst?.numeroInventaire ?? '—'; }
 function getInstanceResource(inst) { return inst?.ressource ?? inst?.id_ressource ?? null; }
+function getLieuAffectation(inst) {
+  return inst?.lieu_affectation?.nom ?? inst?.lieuAffectation?.nom ?? null;
+}
 function getServiceName(inst) {
   return inst?.service_actuel?.nom_service ?? inst?.serviceActuel?.nomService ?? null;
 }
-function getLocalisationActuelle(inst) {
-  return inst?.localisation_actuelle ?? inst?.localisationActuelle ?? null;
+function getDestinataireLabel(inst) {
+  const d = inst?.destinataire ?? null;
+  if (!d) return null;
+  const nom = d.nom ?? '';
+  return nom || null;
 }
 function getDateAcquisitionDisplay(inst) {
   const raw = inst?.date_acquisition_display ?? inst?.dateAcquisitionDisplay

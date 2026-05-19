@@ -29,6 +29,11 @@ def on_retour_decision(sender, instance, **kwargs):
     if nouvel_etat is not None:
         update_fields["etat"] = nouvel_etat
 
+    if decision == "reaffecte":
+        update_fields["type_affectation"] = "reaffectation"
+        update_fields["id_service_actuel"] = None
+        update_fields["id_destinataire"] = None
+
     InstanceRessource.objects.filter(
         pk=instance.id_instance_ressource_id
     ).update(**update_fields)

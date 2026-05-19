@@ -215,6 +215,68 @@ class MarcheBCViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(marche)
         return Response(serializer.data)
 
+    _ORDERED_ETAPES = [
+        "marche_cree",
+        "en_attente_livraison",
+        "livraison_en_cours",
+        "receptionne_magasin",
+        "controle_qualite",
+        "stocker_au_magasin",
+        "paiement_en_cours",
+        "paiement_effectue",
+    ]
+
+    @action(detail=True, methods=["patch"], url_path="changer-etape")
+    def changer_etape(self, request, pk=None):
+        """Advance the next pending étape to 'complete'. IsGestionnaireOrAdmin only."""
+        if not (
+            request.user.is_authenticated
+            and request.user.id_role
+            and request.user.id_role.nom_role in {"gestionnaire_magasin", "admin"}
+        ):
+            from rest_framework.exceptions import PermissionDenied as _PD  # noqa: PLC0415
+            raise _PD()
+
+        marche = self.get_object()
+        nom_etape_cible = str(request.data.get("nom_etape") or "").strip()
+
+        if not nom_etape_cible:
+            return Response({"detail": "nom_etape est requis."}, status=status.HTTP_400_BAD_REQUEST)
+        if nom_etape_cible not in self._ORDERED_ETAPES:
+            return Response({"detail": "Étape inconnue."}, status=status.HTTP_400_BAD_REQUEST)
+
+        etapes = list(MarcheEtape.objects.filter(id_marche=marche).order_by("ordre"))
+        last_complete_idx = -1
+        for i, e in enumerate(etapes):
+            if e.statut == "complete":
+                last_complete_idx = i
+
+        next_idx = last_complete_idx + 1
+        if next_idx >= len(etapes):
+            return Response(
+                {"detail": "Toutes les étapes sont déjà complètes."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        next_etape = etapes[next_idx]
+        if next_etape.nom_etape != nom_etape_cible:
+            return Response(
+                {"detail": f"Vous ne pouvez avancer qu'à l'étape '{next_etape.nom_etape}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.now()
+        next_etape.statut = "complete"
+        next_etape.date_fin = now
+        if not next_etape.date_debut:
+            next_etape.date_debut = now
+        next_etape.id_modifie_par = request.user
+        next_etape.save(update_fields=["statut", "date_debut", "date_fin", "id_modifie_par_id"])
+
+        marche.refresh_from_db()
+        serializer = self.get_serializer(marche)
+        return Response(serializer.data)
+
     @action(detail=True, methods=["post"], url_path="refuser")
     def refuser(self, request, pk=None):
         marche = self.get_object()

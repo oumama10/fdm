@@ -59,6 +59,8 @@ def _find_or_create_ressource(instance):
 
 def _integrate_item_into_stock(staging_item, ressource, marche):
     """Create/update LotArticle and Stock/InstanceRessource for one staging item."""
+    from django.contrib.contenttypes.models import ContentType
+
     from apps.resources.models import InstanceRessource, MouvementStock, Stock
     from apps.resources.signals import _notify_gestionnaires_for_stock
 
@@ -77,6 +79,8 @@ def _integrate_item_into_stock(staging_item, ressource, marche):
             quantite_recue=F("quantite_recue") + staging_item.quantite
         )
 
+    lot_ct = ContentType.objects.get_for_model(LotArticle)
+
     if ressource.is_consommable:
         stock, _ = Stock.objects.get_or_create(id_ressource=ressource)
         Stock.objects.filter(pk=stock.pk).update(
@@ -87,6 +91,8 @@ def _integrate_item_into_stock(staging_item, ressource, marche):
             type_mouvement="entree",
             quantite=staging_item.quantite,
             id_ressource=ressource,
+            content_type=lot_ct,
+            object_id=lot.pk,
         )
     else:
         from datetime import date as _date  # noqa: PLC0415
@@ -112,6 +118,8 @@ def _integrate_item_into_stock(staging_item, ressource, marche):
             type_mouvement="entree",
             quantite=staging_item.quantite,
             id_ressource=ressource,
+            content_type=lot_ct,
+            object_id=lot.pk,
         )
 
 
@@ -138,6 +146,7 @@ _RECEPTION_ETAPES = [
     "livraison_en_cours",
     "receptionne_magasin",
     "controle_qualite",
+    "stocker_au_magasin",
 ]
 
 

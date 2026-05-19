@@ -100,7 +100,6 @@ class MarcheBCSerializer(serializers.ModelSerializer):
             "id_marche",
             "date_creation",
             "delai_reception_jours",
-            "date_livraison_prevue",
             "etapes",
         ]
 

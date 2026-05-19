@@ -336,11 +336,20 @@ class DemandeViewSet(viewsets.ModelViewSet):
                     )
 
                 elif dl.type_ligne == "bien_inventaire" and dl.id_instance_ressource_id:
+                    svc = demande.id_service
+                    etab = (
+                        svc
+                        and getattr(svc, "id_batiment", None)
+                        and getattr(svc.id_batiment, "id_etablissement", None)
+                    ) or None
                     InstanceRessource.objects.filter(
                         pk=dl.id_instance_ressource_id
                     ).update(
                         statut="en_service",
-                        id_service_actuel=demande.id_service,
+                        id_service_actuel=svc,
+                        id_lieu_affectation=etab,
+                        id_destinataire=demande.id_beneficiaire,
+                        type_affectation="nouvelle_affectation",
                         date_derniere_affectation=_now().date(),
                     )
                     MouvementStock.objects.create(

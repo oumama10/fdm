@@ -125,11 +125,22 @@ class StockSerializer(serializers.ModelSerializer):
         read_only_fields = ["id_stock", "date_mise_a_jour", "quantite_reelle"]
 
 
+class _EtablissementBriefSerializer(serializers.Serializer):
+    id_etablissement = serializers.IntegerField()
+    nom = serializers.CharField()
+
+
 class _ServiceBriefSerializer(serializers.Serializer):
     """Minimal read-only representation of a Service (id + nom_service)."""
 
     id_service = serializers.IntegerField()
     nom_service = serializers.CharField()
+
+
+class _BeneficiaireBriefSerializer(serializers.Serializer):
+    id_beneficiaire = serializers.IntegerField()
+    nom = serializers.CharField()
+    role_type = serializers.CharField()
 
 
 class _MarcheBriefSerializer(serializers.Serializer):
@@ -147,7 +158,9 @@ class _LotBriefSerializer(serializers.Serializer):
 
 class InstanceRessourceSerializer(serializers.ModelSerializer):
     ressource = RessourceSerializer(source="id_ressource", read_only=True)
+    lieu_affectation = serializers.SerializerMethodField()
     service_actuel = _ServiceBriefSerializer(source="id_service_actuel", read_only=True)
+    destinataire = _BeneficiaireBriefSerializer(source="id_destinataire", read_only=True)
     date_acquisition_display = serializers.SerializerMethodField()
     reference_marche = serializers.SerializerMethodField()
     id_lot = _LotBriefSerializer(read_only=True)
@@ -162,16 +175,33 @@ class InstanceRessourceSerializer(serializers.ModelSerializer):
             "valeur_acquisition",
             "statut",
             "etat",
-            "localisation_actuelle",
+            "type_affectation",
             "date_derniere_affectation",
             "observation",
             "id_ressource",
             "ressource",
+            "id_lieu_affectation",
+            "lieu_affectation",
             "id_service_actuel",
             "service_actuel",
+            "id_destinataire",
+            "destinataire",
             "id_lot",
             "reference_marche",
         ]
+
+    def get_lieu_affectation(self, obj):
+        etab = obj.id_lieu_affectation
+        if not etab:
+            svc = obj.id_service_actuel
+            etab = (
+                svc
+                and getattr(svc, "id_batiment", None)
+                and getattr(svc.id_batiment, "id_etablissement", None)
+            ) or None
+        if etab:
+            return {"id_etablissement": etab.pk, "nom": etab.nom}
+        return None
 
     def get_date_acquisition_display(self, obj):
         if obj.date_acquisition:
@@ -189,13 +219,18 @@ class InstanceRessourceSerializer(serializers.ModelSerializer):
         lot = getattr(obj, "id_lot", None)
         marche = getattr(lot, "id_marche", None) if lot else None
         if marche:
+            import_excel = getattr(marche, "import_excel", None)
+            if import_excel and import_excel.reference_document:
+                return import_excel.reference_document
             return marche.reference
         return None
 
 
 class MouvementStockSerializer(serializers.ModelSerializer):
-    # Generic FK target — serialised as a lightweight dict.
-    source_object = serializers.SerializerMethodField()
+    reference = serializers.SerializerMethodField()
+    lieu_affectation = serializers.SerializerMethodField()
+    service_affectation = serializers.SerializerMethodField()
+    destinataire_affectation = serializers.SerializerMethodField()
 
     class Meta:
         model = MouvementStock
@@ -204,21 +239,82 @@ class MouvementStockSerializer(serializers.ModelSerializer):
             "type_mouvement",
             "quantite",
             "date_mouvement",
-            "observation",
-            "content_type",
-            "object_id",
-            "source_object",
+            "reference",
             "id_ressource",
             "id_instance_ressource",
-            "id_utilisateur",
+            "lieu_affectation",
+            "service_affectation",
+            "destinataire_affectation",
         ]
-        read_only_fields = ["id_mouvement", "date_mouvement", "source_object"]
+        read_only_fields = ["id_mouvement", "date_mouvement", "reference"]
 
-    def get_source_object(self, obj) -> dict | None:
+    def _get_source(self, obj):
+        if hasattr(obj, "_preloaded_source"):
+            return obj._preloaded_source, getattr(obj, "_preloaded_source_model", "")
         if obj.source is None:
+            return None, ""
+        return obj.source, (obj.content_type.model if obj.content_type else "")
+
+    def get_reference(self, obj) -> str | None:
+        source, model = self._get_source(obj)
+        if source is None:
             return None
-        return {
-            "model": obj.content_type.model if obj.content_type else None,
-            "id": obj.object_id,
-            "display": str(obj.source),
-        }
+        try:
+            if model == "lignedecharge":
+                decharge = getattr(source, "id_decharge", None)
+                if decharge:
+                    return decharge.numero_decharge
+            if model == "lotarticle":
+                marche = getattr(source, "id_marche", None)
+                if marche:
+                    import_excel = getattr(marche, "import_excel", None)
+                    if import_excel and import_excel.reference_document:
+                        return import_excel.reference_document
+                    return marche.reference
+        except Exception:
+            pass
+        return None
+
+    def _get_demande_for_sortie(self, obj):
+        if obj.type_mouvement != "sortie":
+            return None
+        source, model = self._get_source(obj)
+        if model != "lignedecharge" or source is None:
+            return None
+        try:
+            return source.id_decharge.id_demande
+        except Exception:
+            return None
+
+    def get_lieu_affectation(self, obj) -> str | None:
+        demande = self._get_demande_for_sortie(obj)
+        if demande is None:
+            return None
+        try:
+            svc = demande.id_service
+            etab = (
+                svc
+                and getattr(svc, "id_batiment", None)
+                and getattr(svc.id_batiment, "id_etablissement", None)
+            ) or None
+            return etab.nom if etab else None
+        except Exception:
+            return None
+
+    def get_service_affectation(self, obj) -> str | None:
+        demande = self._get_demande_for_sortie(obj)
+        if demande is None:
+            return None
+        try:
+            return demande.id_service.nom_service
+        except Exception:
+            return None
+
+    def get_destinataire_affectation(self, obj) -> str | None:
+        demande = self._get_demande_for_sortie(obj)
+        if demande is None:
+            return None
+        try:
+            return demande.id_beneficiaire.nom
+        except Exception:
+            return None

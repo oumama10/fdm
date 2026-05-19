@@ -134,6 +134,10 @@ class InstanceRessource(models.Model):
         ("hors_service", "hors_service"),
         ("retourne", "retourne"),
     ]
+    TYPE_AFFECTATION_CHOICES = [
+        ("nouvelle_affectation", "Nouvelle Affectation"),
+        ("reaffectation", "Réaffectation"),
+    ]
 
     id_instance = models.AutoField(primary_key=True)
     numero_inventaire = models.CharField(
@@ -151,12 +155,30 @@ class InstanceRessource(models.Model):
     )
     statut = models.CharField(max_length=50, choices=STATUT_CHOICES, default="en_stock", db_index=True)
     etat = models.CharField(max_length=50, choices=ETAT_CHOICES, default="neuf", db_index=True)
-    localisation_actuelle = models.CharField(max_length=200, blank=True)
     date_derniere_affectation = models.DateField(null=True, blank=True)
     observation = models.TextField(blank=True)
+    type_affectation = models.CharField(
+        max_length=30,
+        choices=TYPE_AFFECTATION_CHOICES,
+        blank=True,
+        default="",
+    )
     id_ressource = models.ForeignKey(Ressource, on_delete=models.CASCADE)
+    id_lieu_affectation = models.ForeignKey(
+        "users.Etablissement",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="instances_affectees",
+    )
     id_service_actuel = models.ForeignKey(
         "users.Service",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    id_destinataire = models.ForeignKey(
+        "users.Beneficiaire",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

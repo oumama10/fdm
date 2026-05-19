@@ -1,11 +1,39 @@
+import { useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { getMarcheDetail, getLotsByMarche, confirmerReception, refuserMarche, getStagingItems } from '../../api/procurement';
+import {
+  getMarcheDetail, getLotsByMarche, confirmerReception, refuserMarche,
+  getStagingItems, changerEtape, updateMarche, updateImport,
+} from '../../api/procurement';
 import PageBackButton from '../../components/ui/PageBackButton';
 import StagingClassificationTable from '../../components/procurement/StagingClassificationTable';
 
-// ── Label / style maps ──────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const ORDERED_ETAPES = [
+  'marche_cree', 'en_attente_livraison', 'livraison_en_cours',
+  'receptionne_magasin', 'controle_qualite', 'stocker_au_magasin',
+  'paiement_en_cours', 'paiement_effectue',
+];
+
+const ETAPE_LABELS = {
+  marche_cree:          'Marché créé',
+  en_attente_livraison: 'En attente de livraison',
+  livraison_en_cours:   'Livraison en cours',
+  receptionne_magasin:  'Réceptionné au magasin',
+  controle_qualite:     'Contrôle qualité',
+  stocker_au_magasin:   'Stocker au magasin',
+  paiement_en_cours:    'Paiement en cours',
+  paiement_effectue:    'Paiement effectué',
+};
+
+const ETAPE_STATUT = {
+  complete:   { dot: '#16a34a', bg: '#dcfce7', color: '#166534', label: 'Complète'   },
+  en_cours:   { dot: '#2563eb', bg: '#dbeafe', color: '#1e40af', label: 'En cours'   },
+  en_attente: { dot: '#cbd5e1', bg: '#f1f5f9', color: '#64748b', label: 'En attente' },
+  bloque:     { dot: '#ef4444', bg: '#fee2e2', color: '#991b1b', label: 'Bloquée'    },
+};
 
 const STATUT_LABEL = {
   en_attente_livraison:  'En attente de livraison',
@@ -31,24 +59,13 @@ const TYPE_STYLE = {
   donation:     { background: '#fffbeb', color: '#92400e' },
 };
 
-const ETAPE_LABELS = {
-  marche_cree:           'Marché créé',
-  contrat_signe:         'Contrat signé',
-  en_attente_livraison:  'En attente de livraison',
-  livraison_en_cours:    'Livraison en cours',
-  receptionne_magasin:   'Réceptionné au magasin',
-  controle_qualite:      'Contrôle qualité',
-  paiement_en_cours:     'Paiement en cours',
-  paiement_effectue:     'Paiement effectué',
-};
-const ETAPE_STATUT = {
-  complete:   { dot: '#16a34a', bg: '#dcfce7', color: '#166534', label: 'Complète'   },
-  en_cours:   { dot: '#2563eb', bg: '#dbeafe', color: '#1e40af', label: 'En cours'   },
-  en_attente: { dot: '#cbd5e1', bg: '#f1f5f9', color: '#64748b', label: 'En attente' },
-  bloque:     { dot: '#ef4444', bg: '#fee2e2', color: '#991b1b', label: 'Bloquée'    },
-};
+const STATUT_CHOICES = [
+  { value: 'en_attente_livraison',  label: 'En attente de livraison' },
+  { value: 'receptionne_et_stocke', label: 'Réceptionné' },
+  { value: 'refuse',                label: 'Refusé' },
+];
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(v) {
   if (!v) return '—';
@@ -78,7 +95,16 @@ function InfoRow({ label, value }) {
   );
 }
 
-// ── Page ────────────────────────────────────────────────────────────────────
+function FormRow({ label, children }) {
+  return (
+    <div style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: '1px solid #f8fafc', alignItems: 'center' }}>
+      <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500, width: 175, flexShrink: 0 }}>{label}</span>
+      <div style={{ flex: 1 }}>{children}</div>
+    </div>
+  );
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MarcheDetailPage() {
   const { id } = useParams();
@@ -86,6 +112,13 @@ export default function MarcheDetailPage() {
   const location = useLocation();
   const isFinanciere = location.pathname.startsWith('/financiere');
   const queryClient = useQueryClient();
+
+  // Modal & edit state
+  const [etapeModal, setEtapeModal] = useState(null); // { nom_etape, label }
+  const [editInfos, setEditInfos]   = useState(false);
+  const [infosForm, setInfosForm]   = useState({});
+
+  // ── Queries ─────────────────────────────────────────────────────────────────
 
   const confirmerMutation = useMutation({
     mutationFn: () => confirmerReception(id),
@@ -103,6 +136,22 @@ export default function MarcheDetailPage() {
     },
   });
 
+  const changerEtapeMutation = useMutation({
+    mutationFn: (nomEtape) => changerEtape(id, nomEtape),
+    onSuccess: () => {
+      setEtapeModal(null);
+      queryClient.invalidateQueries({ queryKey: ['procurement', 'marche', id] });
+    },
+  });
+
+  const patchMarcheMutation = useMutation({
+    mutationFn: (data) => updateMarche(id, data),
+    onSuccess: () => {
+      setEditInfos(false);
+      queryClient.invalidateQueries({ queryKey: ['procurement', 'marche', id] });
+    },
+  });
+
   const marcheQuery = useQuery({
     queryKey: ['procurement', 'marche', id],
     queryFn: () => getMarcheDetail(id),
@@ -116,9 +165,9 @@ export default function MarcheDetailPage() {
     enabled: !!id,
   });
 
-  const marche = marcheQuery.data?.data;
+  const marche      = marcheQuery.data?.data;
   const importExcelObj = marche?.import_excel ?? marche?.importExcel;
-  const importId = importExcelObj?.id_import ?? importExcelObj?.idImport ?? importExcelObj?.id;
+  const importId    = importExcelObj?.id_import ?? importExcelObj?.idImport ?? importExcelObj?.id;
 
   const stagingQuery = useQuery({
     queryKey: ['procurement', 'staging', importId],
@@ -126,8 +175,26 @@ export default function MarcheDetailPage() {
     enabled: !!importId && marche?.statut === 'en_attente_livraison',
   });
 
-  const rawLots = lotsQuery.data?.data || [];
+  const rawLots    = lotsQuery.data?.data || [];
   const rawStaging = stagingQuery.data?.data || [];
+
+  // Derived values — computed before early returns so hooks order is stable
+  const etapes = marche?.etapes ?? [];
+
+  const nextEtape = useMemo(() => {
+    if (!etapes.length) return null;
+    const sorted = [...etapes].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+    const lastCompleteIdx = sorted.reduce((acc, e, i) => (e.statut === 'complete' ? i : acc), -1);
+    const nextIdx = lastCompleteIdx + 1;
+    return nextIdx < sorted.length ? sorted[nextIdx] : null;
+  }, [etapes]);
+
+  if (marcheQuery.isLoading) {
+    return <div style={{ height: 220, borderRadius: 10, background: '#f3f4f6' }} />;
+  }
+  if (!marche) {
+    return <div style={{ color: '#b91c1c', padding: 24 }}>Marché introuvable.</div>;
+  }
 
   const lots = rawLots.length > 0 ? rawLots : rawStaging.map(s => ({
     id_lot: `staging-${s.id_staging || s.idStaging}`,
@@ -137,23 +204,64 @@ export default function MarcheDetailPage() {
     ressource: s.id_ressource_liee || {
       categorie: s.categorie_suggeree,
       is_consommable: s.type_detecte === 'consommable' ? true : s.type_detecte === 'bien_inventaire' ? false : null,
-    }
+    },
   }));
-
-  if (marcheQuery.isLoading) {
-    return <div style={{ height: 220, borderRadius: 10, background: '#f3f4f6' }} />;
-  }
-  if (!marche) {
-    return <div style={{ color: '#b91c1c', padding: 24 }}>Marché introuvable.</div>;
-  }
 
   const statut      = marche.statut ?? '';
   const typeAcq     = marche.type_acquisition ?? marche.typeAcquisition ?? '';
-  const etapes      = marche.etapes ?? [];
   const importExcel = marche.import_excel ?? marche.importExcel ?? null;
   const fournisseur = marche.fournisseur ?? null;
   const isDonation  = typeAcq === 'donation';
   const dateRec     = receptionDate(etapes);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
+
+  function openEditInfos() {
+    setInfosForm({
+      titre_fichier:          importExcel?.titre_fichier          ?? importExcel?.titreFichier          ?? '',
+      reference_document:     importExcel?.reference_document     ?? importExcel?.referenceDocument     ?? '',
+      statut:                 statut,
+      date_livraison_prevue:  marche.date_livraison_prevue ?? marche.dateLivraisonPrevue ?? '',
+      fournisseur_denomination: importExcel?.fournisseur_denomination ?? importExcel?.fournisseurDenomination
+                                ?? fournisseur?.nom_societe ?? fournisseur?.nomSociete ?? '',
+      fournisseur_telephone:  importExcel?.fournisseur_telephone ?? importExcel?.fournisseurTelephone
+                                ?? fournisseur?.telephone ?? '',
+      fournisseur_email:      importExcel?.fournisseur_email ?? importExcel?.fournisseurEmail
+                                ?? fournisseur?.email ?? '',
+      nom_donateur:           marche.nom_donateur       ?? marche.nomDonateur       ?? '',
+      organisme_donateur:     marche.organisme_donateur ?? marche.organismeDonateur ?? '',
+      type_donateur:          marche.type_donateur      ?? marche.typeDonateur      ?? '',
+      contact_donateur:       marche.contact_donateur   ?? marche.contactDonateur   ?? '',
+    });
+    setEditInfos(true);
+  }
+
+  function saveInfos(e) {
+    e.preventDefault();
+    const payload = { statut: infosForm.statut };
+    if (infosForm.date_livraison_prevue) payload.date_livraison_prevue = infosForm.date_livraison_prevue;
+    if (isDonation) {
+      payload.nom_donateur       = infosForm.nom_donateur;
+      payload.organisme_donateur = infosForm.organisme_donateur;
+      payload.type_donateur      = infosForm.type_donateur;
+      payload.contact_donateur   = infosForm.contact_donateur;
+    }
+    // Persist import text fields (titre, ref doc, fournisseur) on the linked import
+    if (importId) {
+      updateImport(importId, {
+        titre_fichier:            infosForm.titre_fichier,
+        reference_document:       infosForm.reference_document,
+        ...(!isDonation && {
+          fournisseur_denomination: infosForm.fournisseur_denomination,
+          fournisseur_telephone:    infosForm.fournisseur_telephone,
+          fournisseur_email:        infosForm.fournisseur_email,
+        }),
+      }).catch(() => {});
+    }
+    patchMarcheMutation.mutate(payload);
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ display: 'grid', gap: 16, maxWidth: 860 }}>
@@ -187,7 +295,7 @@ export default function MarcheDetailPage() {
               style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: '#fff', color: '#dc2626', border: '1px solid #fca5a5', cursor: 'pointer' }}
               disabled={refuserMutation.isPending || confirmerMutation.isPending}
               onClick={() => {
-                const motif = window.prompt("Motif du refus :");
+                const motif = window.prompt('Motif du refus :');
                 if (motif !== null) refuserMutation.mutate(motif);
               }}
             >
@@ -209,8 +317,7 @@ export default function MarcheDetailPage() {
                     return;
                   }
                 }
-
-                if (window.confirm("Confirmer la réception de tous les articles ?")) {
+                if (window.confirm('Confirmer la réception de tous les articles ?')) {
                   confirmerMutation.mutate();
                 }
               }}
@@ -277,32 +384,115 @@ export default function MarcheDetailPage() {
 
       {/* ── Section 2 : Informations générales ── */}
       <section style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>Informations générales</h3>
-        <div>
-          <InfoRow label="Référence" value={marche.reference} />
-          <InfoRow label="Type" value={<SmallBadge label={TYPE_LABEL[typeAcq] || typeAcq} style={TYPE_STYLE[typeAcq] || {}} />} />
-          <InfoRow label="Statut" value={<SmallBadge label={STATUT_LABEL[statut] || statut} style={STATUT_STYLE[statut] || {}} />} />
-          <InfoRow label="Date de création" value={formatDate(marche.date_creation ?? marche.dateCreation)} />
-          <InfoRow label="Date de réception" value={formatDate(dateRec)} />
-          <InfoRow label="Délai prévu" value={marche.delai_reception_jours != null ? `${marche.delai_reception_jours} jours` : '—'} />
-          {statut === 'refuse' && marche.motif_rejet && (
-            <div style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: '1px solid #f8fafc' }}>
-              <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600, width: 175, flexShrink: 0 }}>Motif du refus</span>
-              <span style={{ fontSize: 13, color: '#991b1b' }}>{marche.motif_rejet}</span>
-            </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h3 style={{ ...sectionTitleStyle, marginBottom: 0 }}>Informations générales</h3>
+          {!isFinanciere && !editInfos && (
+            <button style={btnEdit} onClick={openEditInfos}>✏️ Modifier</button>
           )}
-          {!isDonation && fournisseur && <>
-            <InfoRow label="Fournisseur" value={fournisseur.nom_societe ?? fournisseur.nomSociete ?? '—'} />
-            {fournisseur.telephone && <InfoRow label="Téléphone" value={fournisseur.telephone} />}
-            {fournisseur.email && <InfoRow label="Email" value={fournisseur.email} />}
-          </>}
-          {isDonation && <>
-            <InfoRow label="Nom donateur"    value={marche.nom_donateur        || marche.nomDonateur        || '—'} />
-            <InfoRow label="Organisme"       value={marche.organisme_donateur  || marche.organismeDonateur  || '—'} />
-            {(marche.type_donateur    || marche.typeDonateur)    && <InfoRow label="Type donateur" value={marche.type_donateur    || marche.typeDonateur} />}
-            {(marche.contact_donateur || marche.contactDonateur) && <InfoRow label="Contact"       value={marche.contact_donateur || marche.contactDonateur} />}
-          </>}
         </div>
+
+        {editInfos ? (
+          <form onSubmit={saveInfos}>
+            <FormRow label="Titre">
+              <input style={inputStyle} value={infosForm.titre_fichier} onChange={e => setInfosForm(f => ({ ...f, titre_fichier: e.target.value }))} />
+            </FormRow>
+            <FormRow label="Référence document">
+              <input style={inputStyle} value={infosForm.reference_document} onChange={e => setInfosForm(f => ({ ...f, reference_document: e.target.value }))} />
+            </FormRow>
+            <FormRow label="Type">
+              <input style={{ ...inputStyle, background: '#f8fafc', color: '#94a3b8' }} value={TYPE_LABEL[typeAcq] || typeAcq} disabled />
+            </FormRow>
+            <FormRow label="Statut">
+              <select style={inputStyle} value={infosForm.statut} onChange={e => setInfosForm(f => ({ ...f, statut: e.target.value }))}>
+                {STATUT_CHOICES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </FormRow>
+            <FormRow label="Date de création">
+              <input style={{ ...inputStyle, background: '#f8fafc', color: '#94a3b8' }} value={formatDate(marche.date_creation ?? marche.dateCreation)} disabled />
+            </FormRow>
+            <FormRow label="Date livraison prévue">
+              <input style={inputStyle} type="date" value={infosForm.date_livraison_prevue} onChange={e => setInfosForm(f => ({ ...f, date_livraison_prevue: e.target.value }))} />
+            </FormRow>
+            <FormRow label="Délai prévu">
+              <input style={{ ...inputStyle, background: '#f8fafc', color: '#94a3b8' }} value={marche.delai_reception_jours != null ? `${marche.delai_reception_jours} jours` : '—'} disabled />
+            </FormRow>
+            {!isDonation && (fournisseur || importExcel) && <>
+              <FormRow label="Fournisseur">
+                <input style={inputStyle} value={infosForm.fournisseur_denomination} onChange={e => setInfosForm(f => ({ ...f, fournisseur_denomination: e.target.value }))} />
+              </FormRow>
+              <FormRow label="Téléphone">
+                <input style={inputStyle} value={infosForm.fournisseur_telephone} onChange={e => setInfosForm(f => ({ ...f, fournisseur_telephone: e.target.value }))} />
+              </FormRow>
+              <FormRow label="Email">
+                <input style={inputStyle} type="email" value={infosForm.fournisseur_email} onChange={e => setInfosForm(f => ({ ...f, fournisseur_email: e.target.value }))} />
+              </FormRow>
+            </>}
+            {isDonation && <>
+              <FormRow label="Nom donateur">
+                <input style={inputStyle} value={infosForm.nom_donateur} onChange={e => setInfosForm(f => ({ ...f, nom_donateur: e.target.value }))} />
+              </FormRow>
+              <FormRow label="Organisme">
+                <input style={inputStyle} value={infosForm.organisme_donateur} onChange={e => setInfosForm(f => ({ ...f, organisme_donateur: e.target.value }))} />
+              </FormRow>
+              <FormRow label="Type donateur">
+                <input style={inputStyle} value={infosForm.type_donateur} onChange={e => setInfosForm(f => ({ ...f, type_donateur: e.target.value }))} />
+              </FormRow>
+              <FormRow label="Contact">
+                <input style={inputStyle} value={infosForm.contact_donateur} onChange={e => setInfosForm(f => ({ ...f, contact_donateur: e.target.value }))} />
+              </FormRow>
+            </>}
+            {patchMarcheMutation.isError && (
+              <p style={{ fontSize: 12, color: '#dc2626', margin: '8px 0 0' }}>
+                {patchMarcheMutation.error?.response?.data?.detail || 'Erreur lors de l\'enregistrement.'}
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button type="submit" style={btnSave} disabled={patchMarcheMutation.isPending}>
+                {patchMarcheMutation.isPending ? '…' : 'Enregistrer'}
+              </button>
+              <button type="button" style={btnCancel} onClick={() => setEditInfos(false)}>Annuler</button>
+            </div>
+          </form>
+        ) : (
+          <div>
+            {(importExcel?.titre_fichier || importExcel?.titreFichier) && (
+              <InfoRow label="Titre" value={importExcel.titre_fichier || importExcel.titreFichier} />
+            )}
+            {(importExcel?.reference_document || importExcel?.referenceDocument) && (
+              <InfoRow label="Référence document" value={importExcel.reference_document || importExcel.referenceDocument} />
+            )}
+            <InfoRow label="Type" value={<SmallBadge label={TYPE_LABEL[typeAcq] || typeAcq} style={TYPE_STYLE[typeAcq] || {}} />} />
+            <InfoRow label="Statut" value={<SmallBadge label={STATUT_LABEL[statut] || statut} style={STATUT_STYLE[statut] || {}} />} />
+            <InfoRow label="Date de création" value={formatDate(marche.date_creation ?? marche.dateCreation)} />
+            <InfoRow label="Date de réception" value={formatDate(dateRec)} />
+            <InfoRow label="Délai prévu" value={marche.delai_reception_jours != null ? `${marche.delai_reception_jours} jours` : '—'} />
+            {statut === 'refuse' && marche.motif_rejet && (
+              <div style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: '1px solid #f8fafc' }}>
+                <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600, width: 175, flexShrink: 0 }}>Motif du refus</span>
+                <span style={{ fontSize: 13, color: '#991b1b' }}>{marche.motif_rejet}</span>
+              </div>
+            )}
+            {!isDonation && (fournisseur || importExcel) && (() => {
+              const nom = importExcel?.fournisseur_denomination || importExcel?.fournisseurDenomination
+                       || fournisseur?.nom_societe || fournisseur?.nomSociete;
+              const tel = importExcel?.fournisseur_telephone || importExcel?.fournisseurTelephone
+                       || fournisseur?.telephone;
+              const email = importExcel?.fournisseur_email || importExcel?.fournisseurEmail
+                         || fournisseur?.email;
+              return <>
+                {nom   && <InfoRow label="Fournisseur" value={nom} />}
+                {tel   && <InfoRow label="Téléphone"   value={tel} />}
+                {email && <InfoRow label="Email"       value={email} />}
+              </>;
+            })()}
+            {isDonation && <>
+              <InfoRow label="Nom donateur"   value={marche.nom_donateur       || marche.nomDonateur       || '—'} />
+              <InfoRow label="Organisme"      value={marche.organisme_donateur || marche.organismeDonateur || '—'} />
+              {(marche.type_donateur    || marche.typeDonateur)    && <InfoRow label="Type donateur" value={marche.type_donateur    || marche.typeDonateur} />}
+              {(marche.contact_donateur || marche.contactDonateur) && <InfoRow label="Contact"       value={marche.contact_donateur || marche.contactDonateur} />}
+            </>}
+          </div>
+        )}
       </section>
 
       {/* ── Section 3 : Étapes ── */}
@@ -310,16 +500,22 @@ export default function MarcheDetailPage() {
         <section style={sectionStyle}>
           <h3 style={sectionTitleStyle}>Étapes du marché</h3>
           <ol style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {etapes.map((etape, idx) => {
-              const st   = etape.statut ?? 'en_attente';
-              const nom  = etape.nom_etape ?? etape.nomEtape ?? '';
-              const df   = etape.date_fin ?? etape.dateFin ?? null;
-              const isLast = idx === etapes.length - 1;
+            {[...etapes].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0)).map((etape, idx, arr) => {
+              const st      = etape.statut ?? 'en_attente';
+              const nom     = etape.nom_etape ?? etape.nomEtape ?? '';
+              const df      = etape.date_fin ?? etape.dateFin ?? null;
+              const isLast  = idx === arr.length - 1;
+              const isNext  = nextEtape && (etape.id_etape ?? etape.idEtape) === (nextEtape.id_etape ?? nextEtape.idEtape);
               const { dot, bg, color, label } = ETAPE_STATUT[st] || ETAPE_STATUT.en_attente;
+
               return (
                 <li key={etape.id_etape ?? idx} style={{ display: 'flex', gap: 12 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 18, flexShrink: 0 }}>
-                    <div style={{ width: 12, height: 12, borderRadius: '50%', marginTop: 3, flexShrink: 0, background: dot }} />
+                    <div style={{
+                      width: 12, height: 12, borderRadius: '50%', marginTop: 3, flexShrink: 0,
+                      background: dot,
+                      boxShadow: st === 'complete' ? `0 0 0 3px ${dot}33` : 'none',
+                    }} />
                     {!isLast && <div style={{ width: 2, flex: 1, minHeight: 20, background: '#e2e8f0', marginTop: 2 }} />}
                   </div>
                   <div style={{ flex: 1, paddingBottom: isLast ? 4 : 18 }}>
@@ -330,6 +526,15 @@ export default function MarcheDetailPage() {
                       <span style={{ fontSize: 11, fontWeight: 500, borderRadius: 999, padding: '2px 8px', background: bg, color }}>
                         {label}
                       </span>
+                      {isNext && !isFinanciere && (
+                        <button
+                          style={btnNextEtape}
+                          disabled={changerEtapeMutation.isPending}
+                          onClick={() => setEtapeModal({ nom_etape: nom, label: ETAPE_LABELS[nom] || nom })}
+                        >
+                          → Passer à cette étape
+                        </button>
+                      )}
                     </div>
                     {df && (
                       <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
@@ -344,30 +549,40 @@ export default function MarcheDetailPage() {
         </section>
       )}
 
-      {/* ── Section 4 : Import lié ── */}
-      {importExcel && (
-        <section style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Import lié</h3>
-          <div>
-            {(importExcel.reference_document || importExcel.referenceDocument) && (
-              <InfoRow label="Référence document" value={importExcel.reference_document || importExcel.referenceDocument} />
+      {/* ── Étape confirmation modal ── */}
+      {etapeModal && (
+        <div style={backdropStyle} onClick={() => setEtapeModal(null)}>
+          <div style={modalStyle} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
+              Confirmer l'avancement
+            </h3>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#374151' }}>
+              Passer l'étape <strong>{etapeModal.label}</strong> au statut <strong>Complète</strong> ?
+            </p>
+            {changerEtapeMutation.isError && (
+              <p style={{ fontSize: 12, color: '#dc2626', margin: '0 0 12px' }}>
+                {changerEtapeMutation.error?.response?.data?.detail || 'Erreur.'}
+              </p>
             )}
-            {(importExcel.fournisseur_denomination || importExcel.fournisseurDenomination) && (
-              <InfoRow label="Fournisseur (import)" value={importExcel.fournisseur_denomination || importExcel.fournisseurDenomination} />
-            )}
-            {(importExcel.delai_execution || importExcel.delaiExecution) && (
-              <InfoRow label="Délai d'exécution" value={importExcel.delai_execution || importExcel.delaiExecution} />
-            )}
-            <InfoRow label="Fichier" value={importExcel.titre_fichier || importExcel.titreFichier || '—'} />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button style={btnCancel} onClick={() => setEtapeModal(null)}>Annuler</button>
+              <button
+                style={btnSave}
+                disabled={changerEtapeMutation.isPending}
+                onClick={() => changerEtapeMutation.mutate(etapeModal.nom_etape)}
+              >
+                {changerEtapeMutation.isPending ? '…' : 'Confirmer'}
+              </button>
+            </div>
           </div>
-        </section>
+        </div>
       )}
 
     </div>
   );
 }
 
-// ── Styles ───────────────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const sectionStyle = {
   border: '1px solid #e5e7eb',
@@ -384,33 +599,35 @@ const sectionTitleStyle = {
   color: '#0f172a',
 };
 
-const tableStyle = {
-  width: '100%',
-  borderCollapse: 'collapse',
-  fontSize: 13,
+const tableStyle   = { width: '100%', borderCollapse: 'collapse', fontSize: 13 };
+const thStyle      = { textAlign: 'left', fontWeight: 600, color: '#64748b', fontSize: 12,
+                       padding: '8px 10px', borderBottom: '1px solid #e5e7eb' };
+const tdStyle      = { padding: '8px 10px', color: '#374151', verticalAlign: 'middle' };
+
+const inputStyle = {
+  width: '100%', boxSizing: 'border-box',
+  border: '1px solid #d1d5db', borderRadius: 6,
+  padding: '5px 8px', fontSize: 13, color: '#1e293b',
+  background: '#fff',
 };
 
-const thStyle = {
-  textAlign: 'left',
-  fontWeight: 600,
-  color: '#64748b',
-  fontSize: 12,
-  padding: '8px 12px',
-  borderBottom: '1px solid #e5e7eb',
+const btnBase = {
+  border: 'none', borderRadius: 6, padding: '6px 14px',
+  fontSize: 12, fontWeight: 600, cursor: 'pointer', lineHeight: '18px',
+};
+const btnEdit     = { ...btnBase, border: '1px solid #d1d5db', background: '#fff', color: '#374151' };
+const btnSave     = { ...btnBase, background: '#0C447C', color: '#fff' };
+const btnCancel   = { ...btnBase, border: '1px solid #d1d5db', background: '#fff', color: '#374151' };
+const btnNextEtape = {
+  ...btnBase, fontSize: 11, padding: '3px 10px',
+  background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe',
 };
 
-const tdStyle = {
-  padding: '9px 12px',
-  color: '#1e293b',
-  verticalAlign: 'middle',
+const backdropStyle = {
+  position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)',
+  display: 'grid', placeItems: 'center', zIndex: 100,
 };
-
-const linkBtnStyle = {
-  background: 'none',
-  border: 'none',
-  color: '#2563eb',
-  fontSize: 13,
-  cursor: 'pointer',
-  padding: 0,
-  textDecoration: 'underline',
+const modalStyle = {
+  width: 'min(420px, 92vw)', background: '#fff', borderRadius: 12,
+  padding: '24px 28px', boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
 };
