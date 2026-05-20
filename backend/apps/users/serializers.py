@@ -130,6 +130,7 @@ class UserMeSerializer(serializers.ModelSerializer):
             "id",
             "nom_complet",
             "email",
+            "titre_poste",
             "role",
             "service",
             "is_fournisseur",
@@ -143,10 +144,24 @@ class UserMeSerializer(serializers.ModelSerializer):
 
     def get_service(self, obj):
         if obj.id_service:
-            return {
-                "id": obj.id_service.id_service,
-                "nom": obj.id_service.nom_service,
+            svc = obj.id_service
+            result = {
+                "id": svc.id_service,
+                "nom": svc.nom_service,
             }
+            # Include batiment + etablissement hierarchy
+            if svc.id_batiment:
+                bat = svc.id_batiment
+                result["batiment"] = {
+                    "id": bat.id_batiment,
+                    "nom": bat.nom,
+                }
+                if bat.id_etablissement:
+                    result["etablissement"] = {
+                        "id": bat.id_etablissement.id_etablissement,
+                        "nom": bat.id_etablissement.nom,
+                    }
+            return result
         return None
 
     def get_fournisseur_id(self, obj):

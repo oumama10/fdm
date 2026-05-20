@@ -111,6 +111,22 @@ export default function DemandesPage() {
         </button>
       </div>
 
+      {/* ── Info banner ── */}
+      <div style={{
+        background: '#f0f9ff',
+        border: '1px solid #bae6fd',
+        borderRadius: T.radius,
+        padding: '12px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+      }}>
+        <span style={{ fontSize: 18 }}>ℹ️</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#0369a1' }}>
+          Toutes les demandes sont traitées d'après leurs disponibilités.
+        </span>
+      </div>
+
       {/* ── Table shell ── */}
       <div style={tableShell}>
 

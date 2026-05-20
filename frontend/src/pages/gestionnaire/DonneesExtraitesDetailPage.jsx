@@ -76,6 +76,9 @@ export default function DonneesExtraitesDetailPage() {
     fournisseur_email: importData?.fournisseurEmail ?? importData?.fournisseur_email ?? '',
     fournisseur_adresse: importData?.fournisseurAdresse ?? importData?.fournisseur_adresse ?? '',
     delai_execution: importData?.delaiExecution ?? importData?.delai_execution ?? '',
+    date_attribution: importData?.date_attribution ?? '',
+    marque: importData?.marque ?? '',
+    comite_conformite: importData?.comite_conformite ?? '',
   };
 
   const patchImportMutation = useMutation({
@@ -292,15 +295,23 @@ export default function DonneesExtraitesDetailPage() {
             ['Téléphone', 'fournisseur_telephone'],
             ['Email', 'fournisseur_email'],
             ['Délai exécution', 'delai_execution'],
+            ['Date attribution', 'date_attribution'],
+            ['Marque', 'marque'],
           ].map(([label, key]) => (
             <FieldLabel key={key} label={label}>
               {isReadOnly
                 ? <span style={readOnlyValue}>{draft[key] || '—'}</span>
-                : <input style={inputStyle} value={draft[key]} onChange={(e) => setHeaderDraft({ ...draft, [key]: e.target.value })} />
+                : <input style={inputStyle} type={key === 'date_attribution' ? 'date' : 'text'} value={draft[key]} onChange={(e) => setHeaderDraft({ ...draft, [key]: e.target.value })} />
               }
             </FieldLabel>
           ))}
-          <div style={{ gridColumn: '1 / -1' }}>
+          <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+            <FieldLabel label="Comité de conformité (Observation/Commentaire)">
+              {isReadOnly
+                ? <span style={readOnlyValue}>{draft.comite_conformite || '—'}</span>
+                : <textarea style={{ ...inputStyle, minHeight: 64, resize: 'vertical' }} rows={2} value={draft.comite_conformite} onChange={(e) => setHeaderDraft({ ...draft, comite_conformite: e.target.value })} />
+              }
+            </FieldLabel>
             <FieldLabel label="Adresse fournisseur">
               {isReadOnly
                 ? <span style={readOnlyValue}>{draft.fournisseur_adresse || '—'}</span>

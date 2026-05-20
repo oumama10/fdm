@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { getCategories, getSousCategories, getRessources } from '../../api/resources';
 import { createDemande } from '../../api/requests';
-import { getEtablissements, getBatiments, getServices, getBeneficiaires } from '../../api/users';
+import { getEtablissements, getBatiments, getServices, getBeneficiaires, getPersonnelByService } from '../../api/users';
 import { useAuthStore } from '../../store/authStore';
 
 // ── Design tokens ─────────────────────────────────────────────────────────
@@ -81,21 +81,42 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
   const [selectedBatimentId, setSelectedBatimentId]   = useState('');
   const [selectedServiceId, setSelectedServiceId]     = useState('');
   const [selectedBenefId, setSelectedBenefId]         = useState('');
+  const [selectedPersonnelId, setSelectedPersonnelId] = useState('');
 
   const todayDisplay = useMemo(() => new Date().toLocaleDateString('fr-FR'), []);
 
-  // ── Hierarchy queries ───────────────────────────────────────────────────
+  // ── Auto-fill hierarchy from user profile ────────────────────────────────
+  const userService = user?.service;
+  const userEtabId    = String(userService?.etablissement?.id ?? userService?.etablissement?.idEtablissement ?? '');
+  const userEtabNom   = userService?.etablissement?.nom ?? '';
+  const userBatId     = String(userService?.batiment?.id ?? userService?.batiment?.idBatiment ?? '');
+  const userBatNom    = userService?.batiment?.nom ?? '';
+  const userSvcId     = String(userService?.id ?? '');
+  const userSvcNom    = userService?.nom ?? userService?.nomService ?? '';
+  const isProfileLocked = Boolean(userSvcId);
+
+  // Pre-fill on mount from user profile
+  useEffect(() => {
+    if (isProfileLocked) {
+      setSelectedEtabId(userEtabId);
+      setSelectedBatimentId(userBatId);
+      setSelectedServiceId(userSvcId);
+    }
+  }, [isProfileLocked, userEtabId, userBatId, userSvcId]);
+
+  // ── Hierarchy queries (only used if profile NOT locked) ─────────────────
   const etabQuery = useQuery({
     queryKey: ['hierarchy', 'etablissements'],
     queryFn: getEtablissements,
     staleTime: 300_000,
+    enabled: !isProfileLocked,
   });
   const etablissements = etabQuery.data?.data || [];
 
   const batQuery = useQuery({
     queryKey: ['hierarchy', 'batiments', selectedEtabId],
     queryFn: () => getBatiments({ id_etablissement: selectedEtabId }),
-    enabled: Boolean(selectedEtabId),
+    enabled: !isProfileLocked && Boolean(selectedEtabId),
     staleTime: 300_000,
   });
   const batiments = batQuery.data?.data || [];
@@ -103,7 +124,7 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
   const svcQuery = useQuery({
     queryKey: ['hierarchy', 'services', selectedBatimentId],
     queryFn: () => getServices({ id_batiment: selectedBatimentId }),
-    enabled: Boolean(selectedBatimentId),
+    enabled: !isProfileLocked && Boolean(selectedBatimentId),
     staleTime: 300_000,
   });
   const services = svcQuery.data?.data || [];
@@ -126,6 +147,18 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
   const _benId   = (b) => b.idBeneficiaire ?? b.id_beneficiaire;
   const _benNom  = (b) => b.nom;
   const _benRole = (b) => b.roleType ?? b.role_type;
+
+  // ── Personnel query (loaded when a 'personnel' benef is selected) ───────
+  const selectedBenef = beneficiaires.find((b) => String(_benId(b)) === String(selectedBenefId));
+  const isPersonnelBenef = selectedBenef && (_benRole(selectedBenef) === 'personnel');
+
+  const personnelQuery = useQuery({
+    queryKey: ['hierarchy', 'personnel', selectedServiceId],
+    queryFn: () => getPersonnelByService(selectedServiceId),
+    enabled: Boolean(selectedServiceId) && Boolean(isPersonnelBenef),
+    staleTime: 300_000,
+  });
+  const personnelList = personnelQuery.data?.data || [];
 
   // ── Data queries ────────────────────────────────────────────────────────
   const categoriesQuery = useQuery({
@@ -243,12 +276,27 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
     if (!selectedBenefId) { setFormError('Veuillez sélectionner un bénéficiaire.'); return; }
     if (!lignes.length) { setFormError('Ajoutez au moins une ligne.'); return; }
     const benef = beneficiaires.find((b) => String(_benId(b)) === String(selectedBenefId));
+    const benefRole = benef ? _benRole(benef) : '';
+
+    // If the beneficiary is "personnel", a specific person must be selected
+    if (benefRole === 'personnel' && !selectedPersonnelId) {
+      setFormError('Veuillez sélectionner un personnel.');
+      return;
+    }
+
+    // Build beneficiaire detail — include selected personnel name if applicable
+    let benefDetail = '';
+    if (benefRole === 'personnel' && selectedPersonnelId) {
+      const person = personnelList.find((p) => String(p.idUtilisateur ?? p.id_utilisateur) === String(selectedPersonnelId));
+      benefDetail = person ? (person.nomComplet ?? person.nom_complet ?? '') : '';
+    }
+
     await createMutation.mutateAsync({
       urgence,
       type_demandeur: 'chef_service',
-      beneficiaire_type: 'service',
+      beneficiaire_type: benefRole || 'service',
       beneficiaire_nom: benef ? _benNom(benef) : '',
-      beneficiaire_detail: '',
+      beneficiaire_detail: benefDetail,
       justification,
       id_service: serviceId,
       id_beneficiaire: Number(selectedBenefId),
@@ -301,72 +349,100 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
             <h3 style={sectionTitleStyle}>Désignation du demandeur</h3>
             <div style={row2Style}>
               <Field label="Établissement" required>
-                <Select
-                  value={selectedEtabId}
-                  onChange={(e) => {
-                    setSelectedEtabId(e.target.value);
-                    setSelectedBatimentId('');
-                    setSelectedServiceId('');
-                    setSelectedBenefId('');
-                  }}
-                >
-                  <option value="">— Choisir —</option>
-                  {etablissements.map((e) => (
-                    <option key={_eId(e)} value={_eId(e)}>{_eNom(e)}</option>
-                  ))}
-                </Select>
+                {isProfileLocked ? (
+                  <Input value={userEtabNom || '—'} readOnly disabled style={{ color: C.textMuted, background: C.bgSubtle }} />
+                ) : (
+                  <Select
+                    value={selectedEtabId}
+                    onChange={(e) => {
+                      setSelectedEtabId(e.target.value);
+                      setSelectedBatimentId('');
+                      setSelectedServiceId('');
+                      setSelectedBenefId('');
+                    }}
+                  >
+                    <option value="">— Choisir —</option>
+                    {etablissements.map((e) => (
+                      <option key={_eId(e)} value={_eId(e)}>{_eNom(e)}</option>
+                    ))}
+                  </Select>
+                )}
               </Field>
               <Field label="Bâtiment" required>
-                <Select
-                  value={selectedBatimentId}
-                  onChange={(e) => {
-                    setSelectedBatimentId(e.target.value);
-                    setSelectedServiceId('');
-                    setSelectedBenefId('');
-                  }}
-                  disabled={!selectedEtabId}
-                  style={{ color: !selectedEtabId ? C.textMuted : undefined }}
-                >
-                  <option value="">— Choisir —</option>
-                  {batiments.map((b) => (
-                    <option key={_bId(b)} value={_bId(b)}>{_bNom(b)}</option>
-                  ))}
-                </Select>
+                {isProfileLocked ? (
+                  <Input value={userBatNom || '—'} readOnly disabled style={{ color: C.textMuted, background: C.bgSubtle }} />
+                ) : (
+                  <Select
+                    value={selectedBatimentId}
+                    onChange={(e) => {
+                      setSelectedBatimentId(e.target.value);
+                      setSelectedServiceId('');
+                      setSelectedBenefId('');
+                    }}
+                    disabled={!selectedEtabId}
+                    style={{ color: !selectedEtabId ? C.textMuted : undefined }}
+                  >
+                    <option value="">— Choisir —</option>
+                    {batiments.map((b) => (
+                      <option key={_bId(b)} value={_bId(b)}>{_bNom(b)}</option>
+                    ))}
+                  </Select>
+                )}
               </Field>
             </div>
             <div style={row2Style}>
               <Field label="Service" required>
-                <Select
-                  value={selectedServiceId}
-                  onChange={(e) => {
-                    setSelectedServiceId(e.target.value);
-                    setSelectedBenefId('');
-                  }}
-                  disabled={!selectedBatimentId}
-                  style={{ color: !selectedBatimentId ? C.textMuted : undefined }}
-                >
-                  <option value="">— Choisir —</option>
-                  {services.map((s) => (
-                    <option key={_sId(s)} value={_sId(s)}>{_sNom(s)}</option>
-                  ))}
-                </Select>
+                {isProfileLocked ? (
+                  <Input value={userSvcNom || '—'} readOnly disabled style={{ color: C.textMuted, background: C.bgSubtle }} />
+                ) : (
+                  <Select
+                    value={selectedServiceId}
+                    onChange={(e) => {
+                      setSelectedServiceId(e.target.value);
+                      setSelectedBenefId('');
+                    }}
+                    disabled={!selectedBatimentId}
+                    style={{ color: !selectedBatimentId ? C.textMuted : undefined }}
+                  >
+                    <option value="">— Choisir —</option>
+                    {services.map((s) => (
+                      <option key={_sId(s)} value={_sId(s)}>{_sNom(s)}</option>
+                    ))}
+                  </Select>
+                )}
               </Field>
               <Field label="Bénéficiaire" required>
                 <Select
                   value={selectedBenefId}
-                  onChange={(e) => setSelectedBenefId(e.target.value)}
+                  onChange={(e) => { setSelectedBenefId(e.target.value); setSelectedPersonnelId(''); }}
                   disabled={!selectedServiceId}
                   style={{ color: !selectedServiceId ? C.textMuted : undefined }}
                 >
                   <option value="">— Choisir —</option>
                   {beneficiaires.map((b) => (
                     <option key={_benId(b)} value={_benId(b)}>
-                      {_benNom(b)} ({_benRole(b) === 'chef_service' ? 'Chef' : _benRole(b) === 'secretariat' ? 'Secrétariat' : _benRole(b) === 'salle_de_cours' ? 'Salle de cours' : _benRole(b) === 'fonctionnaire' ? 'Fonctionnaire' : _benRole(b) === 'prof' ? 'Prof' : _benRole(b)})
+                      {_benNom(b)} ({_benRole(b) === 'chef_service' ? 'Chef' : _benRole(b) === 'secretariat' ? 'Secrétariat' : _benRole(b) === 'salle_de_cours' ? 'Salle de cours' : _benRole(b) === 'fonctionnaire' ? 'Fonctionnaire' : _benRole(b) === 'prof' ? 'Prof' : _benRole(b) === 'personnel' ? 'Personnel' : _benRole(b)})
                     </option>
                   ))}
                 </Select>
               </Field>
             </div>
+            {/* Personnel dropdown — shown when beneficiary type is 'personnel' */}
+            {isPersonnelBenef && (
+              <Field label="Nom du personnel" required>
+                <Select
+                  value={selectedPersonnelId}
+                  onChange={(e) => setSelectedPersonnelId(e.target.value)}
+                >
+                  <option value="">— Choisir un personnel —</option>
+                  {personnelList.map((p) => {
+                    const pid = p.idUtilisateur ?? p.id_utilisateur;
+                    const pnom = p.nomComplet ?? p.nom_complet;
+                    return <option key={pid} value={pid}>{pnom}</option>;
+                  })}
+                </Select>
+              </Field>
+            )}
           </section>
 
           {/* Type d'article */}

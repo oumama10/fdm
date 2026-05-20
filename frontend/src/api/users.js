@@ -24,3 +24,11 @@ export const getJournalAudit = (params = {}) => apiClient.get('/users/journal-au
 export const getEtablissements = () => apiClient.get('/users/etablissements/');
 export const getBatiments = (params = {}) => apiClient.get('/users/batiments/', { params });
 export const getBeneficiaires = (params = {}) => apiClient.get('/users/beneficiaires/', { params });
+
+// ── Profile ───────────────────────────────────────────────────────────────
+export const getMyProfile = () => apiClient.get('/users/me/');
+export const updateMyProfile = (data) => apiClient.patch('/users/me/', data);
+
+// ── Personnel du service ──────────────────────────────────────────────────
+export const getPersonnelByService = (serviceId) =>
+  apiClient.get('/users/utilisateurs/', { params: { id_service: serviceId } });

@@ -38,8 +38,7 @@ const ETAPE_LABELS = {
   livraison_en_cours:    'Livraison en cours',
   receptionne_magasin:   'Réceptionné au magasin',
   controle_qualite:      'Contrôle qualité',
-  paiement_en_cours:     'Paiement en cours',
-  paiement_effectue:     'Paiement effectué',
+  bl_valide:             'Bon de livraison est validé',
 };
 const ETAPE_STATUT = {
   complete:   { dot: '#16a34a', bg: '#dcfce7', color: '#166534', label: 'Complète'   },
@@ -285,6 +284,9 @@ export default function MarcheDetailPage() {
           <InfoRow label="Date de création" value={formatDate(marche.date_creation ?? marche.dateCreation)} />
           <InfoRow label="Date de réception" value={formatDate(dateRec)} />
           <InfoRow label="Délai prévu" value={marche.delai_reception_jours != null ? `${marche.delai_reception_jours} jours` : '—'} />
+          <InfoRow label="Date d'attribution" value={formatDate(marche.date_attribution ?? marche.dateAttribution)} />
+          <InfoRow label="Marque" value={marche.marque || '—'} />
+          <InfoRow label="Comité de conformité" value={marche.comite_conformite ?? marche.comiteConformite ?? '—'} />
           {statut === 'refuse' && marche.motif_rejet && (
             <div style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: '1px solid #f8fafc' }}>
               <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600, width: 175, flexShrink: 0 }}>Motif du refus</span>
