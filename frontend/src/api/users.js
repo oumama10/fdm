@@ -24,6 +24,9 @@ export const getJournalAudit = (params = {}) => apiClient.get('/users/journal-au
 export const getEtablissements = () => apiClient.get('/users/etablissements/');
 export const getBatiments = (params = {}) => apiClient.get('/users/batiments/', { params });
 export const getBeneficiaires = (params = {}) => apiClient.get('/users/beneficiaires/', { params });
+export const createBeneficiaire = (data) => apiClient.post('/users/beneficiaires/', data);
+export const updateBeneficiaire = (id, data) => apiClient.patch(`/users/beneficiaires/${id}/`, data);
+export const deleteBeneficiaire = (id) => apiClient.delete(`/users/beneficiaires/${id}/`);
 
 // ── Profile ───────────────────────────────────────────────────────────────
 export const getMyProfile = () => apiClient.get('/users/me/');

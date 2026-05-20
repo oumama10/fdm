@@ -47,6 +47,7 @@ const sidebarConfig = {
     { label: 'Demandes', path: '/chef/demandes', icon: FileText },
     { label: 'Décharges', path: '/chef/decharges', icon: PackageCheck },
     { label: 'Retours', path: '/chef/retours', icon: RotateCcw },
+    { label: 'Personnel', path: '/chef/personnel', icon: Users },
     { label: 'Profil', path: '/chef/profil', icon: User },
   ],
   fournisseur: [
@@ -80,6 +81,7 @@ const PAGE_TITLES = {
   '/chef/demandes': 'Demandes',
   '/chef/decharges': 'Décharges',
   '/chef/retours': 'Retours',
+  '/chef/personnel': 'Personnel',
   '/chef/profil': 'Profil',
   '/admin/utilisateurs': 'Utilisateurs',
   '/admin/services': 'Services',

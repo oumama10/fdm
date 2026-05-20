@@ -85,9 +85,14 @@ class ServiceViewSet(viewsets.ModelViewSet):
         return qs
 
 
-class BeneficiaireViewSet(viewsets.ReadOnlyModelViewSet):
+class BeneficiaireViewSet(viewsets.ModelViewSet):
     serializer_class = BeneficiaireSerializer
-    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [permissions.IsAuthenticated()]
+        # Create / update / delete: chef_service (own service) or admin
+        return [permissions.IsAuthenticated()]
 
     def get_queryset(self):
         qs = Beneficiaire.objects.select_related("id_service").order_by("role_type", "nom")
@@ -95,6 +100,46 @@ class BeneficiaireViewSet(viewsets.ReadOnlyModelViewSet):
         if id_service:
             qs = qs.filter(id_service_id=id_service)
         return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        role = getattr(user.id_role, "nom_role", "") if user.id_role else ""
+        # Chef can only create beneficiaires for their own service
+        if role == "chef_service" and user.id_service:
+            serializer.save(id_service=user.id_service)
+        elif role == "admin":
+            serializer.save()
+        else:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Vous ne pouvez pas créer de bénéficiaire.")
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        role = getattr(user.id_role, "nom_role", "") if user.id_role else ""
+        if role == "chef_service" and user.id_service:
+            if serializer.instance.id_service_id != user.id_service_id:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Vous ne pouvez modifier que les bénéficiaires de votre service.")
+            serializer.save()
+        elif role == "admin":
+            serializer.save()
+        else:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Vous ne pouvez pas modifier ce bénéficiaire.")
+
+    def perform_destroy(self, instance):
+        user = self.request.user
+        role = getattr(user.id_role, "nom_role", "") if user.id_role else ""
+        if role == "chef_service" and user.id_service:
+            if instance.id_service_id != user.id_service_id:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Vous ne pouvez supprimer que les bénéficiaires de votre service.")
+            instance.delete()
+        elif role == "admin":
+            instance.delete()
+        else:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Vous ne pouvez pas supprimer ce bénéficiaire.")
 
 
 class RoleViewSet(viewsets.ReadOnlyModelViewSet):

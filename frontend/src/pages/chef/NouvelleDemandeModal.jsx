@@ -148,17 +148,16 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
   const _benNom  = (b) => b.nom;
   const _benRole = (b) => b.roleType ?? b.role_type;
 
-  // ── Personnel query (loaded when a 'personnel' benef is selected) ───────
-  const selectedBenef = beneficiaires.find((b) => String(_benId(b)) === String(selectedBenefId));
-  const isPersonnelBenef = selectedBenef && (_benRole(selectedBenef) === 'personnel');
+  // Split beneficiaries into personnel and non-personnel
+  const nonPersonnelBeneficiaires = useMemo(() => {
+    return beneficiaires.filter((b) => _benRole(b) !== 'personnel');
+  }, [beneficiaires]);
 
-  const personnelQuery = useQuery({
-    queryKey: ['hierarchy', 'personnel', selectedServiceId],
-    queryFn: () => getPersonnelByService(selectedServiceId),
-    enabled: Boolean(selectedServiceId) && Boolean(isPersonnelBenef),
-    staleTime: 300_000,
-  });
-  const personnelList = personnelQuery.data?.data || [];
+  const personnelBeneficiaires = useMemo(() => {
+    return beneficiaires.filter((b) => _benRole(b) === 'personnel');
+  }, [beneficiaires]);
+
+  const isPersonnelBenef = selectedBenefId === 'personnel_group';
 
   // ── Data queries ────────────────────────────────────────────────────────
   const categoriesQuery = useQuery({
@@ -275,31 +274,42 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
     if (!serviceId) { setFormError('Veuillez sélectionner un service.'); return; }
     if (!selectedBenefId) { setFormError('Veuillez sélectionner un bénéficiaire.'); return; }
     if (!lignes.length) { setFormError('Ajoutez au moins une ligne.'); return; }
-    const benef = beneficiaires.find((b) => String(_benId(b)) === String(selectedBenefId));
-    const benefRole = benef ? _benRole(benef) : '';
 
     // If the beneficiary is "personnel", a specific person must be selected
-    if (benefRole === 'personnel' && !selectedPersonnelId) {
+    if (isPersonnelBenef && !selectedPersonnelId) {
       setFormError('Veuillez sélectionner un personnel.');
       return;
     }
 
-    // Build beneficiaire detail — include selected personnel name if applicable
+    // Resolve the actual beneficiaire ID and details
+    let actualBenefId;
+    let benefRole;
+    let benefNom;
     let benefDetail = '';
-    if (benefRole === 'personnel' && selectedPersonnelId) {
-      const person = personnelList.find((p) => String(p.idUtilisateur ?? p.id_utilisateur) === String(selectedPersonnelId));
-      benefDetail = person ? (person.nomComplet ?? person.nom_complet ?? '') : '';
+
+    if (isPersonnelBenef) {
+      // selectedPersonnelId is the actual beneficiaire ID from personnelBeneficiaires
+      actualBenefId = Number(selectedPersonnelId);
+      const person = personnelBeneficiaires.find((b) => String(_benId(b)) === String(selectedPersonnelId));
+      benefRole = 'personnel';
+      benefNom = person ? _benNom(person) : '';
+      benefDetail = benefNom;
+    } else {
+      actualBenefId = Number(selectedBenefId);
+      const benef = nonPersonnelBeneficiaires.find((b) => String(_benId(b)) === String(selectedBenefId));
+      benefRole = benef ? _benRole(benef) : '';
+      benefNom = benef ? _benNom(benef) : '';
     }
 
     await createMutation.mutateAsync({
       urgence,
       type_demandeur: 'chef_service',
       beneficiaire_type: benefRole || 'service',
-      beneficiaire_nom: benef ? _benNom(benef) : '',
+      beneficiaire_nom: benefNom,
       beneficiaire_detail: benefDetail,
       justification,
       id_service: serviceId,
-      id_beneficiaire: Number(selectedBenefId),
+      id_beneficiaire: actualBenefId,
       lignes: lignes.map((l) => ({
         id_ressource: Number(l.id_ressource),
         quantite_demandee: Number(l.quantite_demandee),
@@ -419,11 +429,14 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
                   style={{ color: !selectedServiceId ? C.textMuted : undefined }}
                 >
                   <option value="">— Choisir —</option>
-                  {beneficiaires.map((b) => (
+                  {nonPersonnelBeneficiaires.map((b) => (
                     <option key={_benId(b)} value={_benId(b)}>
-                      {_benNom(b)} ({_benRole(b) === 'chef_service' ? 'Chef' : _benRole(b) === 'secretariat' ? 'Secrétariat' : _benRole(b) === 'salle_de_cours' ? 'Salle de cours' : _benRole(b) === 'fonctionnaire' ? 'Fonctionnaire' : _benRole(b) === 'prof' ? 'Prof' : _benRole(b) === 'personnel' ? 'Personnel' : _benRole(b)})
+                      {_benNom(b)} ({_benRole(b) === 'chef_service' ? 'Chef' : _benRole(b) === 'secretariat' ? 'Secrétariat' : _benRole(b) === 'salle_de_cours' ? 'Salle de cours' : _benRole(b) === 'fonctionnaire' ? 'Fonctionnaire' : _benRole(b) === 'prof' ? 'Prof' : _benRole(b)})
                     </option>
                   ))}
+                  {personnelBeneficiaires.length > 0 && (
+                    <option value="personnel_group">Personnel</option>
+                  )}
                 </Select>
               </Field>
             </div>
@@ -435,11 +448,9 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
                   onChange={(e) => setSelectedPersonnelId(e.target.value)}
                 >
                   <option value="">— Choisir un personnel —</option>
-                  {personnelList.map((p) => {
-                    const pid = p.idUtilisateur ?? p.id_utilisateur;
-                    const pnom = p.nomComplet ?? p.nom_complet;
-                    return <option key={pid} value={pid}>{pnom}</option>;
-                  })}
+                  {personnelBeneficiaires.map((b) => (
+                    <option key={_benId(b)} value={_benId(b)}>{_benNom(b)}</option>
+                  ))}
                 </Select>
               </Field>
             )}
