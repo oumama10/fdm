@@ -95,6 +95,9 @@ class MarcheBCSerializer(serializers.ModelSerializer):
             "organisme_donateur",
             "contact_donateur",
             "motif_rejet",
+            "date_attribution",
+            "marque",
+            "comite_conformite",
         ]
         read_only_fields = [
             "id_marche",
@@ -150,8 +153,41 @@ class ImportExcelBCSerializer(serializers.ModelSerializer):
             "id_marche",
             "id_importe_par",
             "staging_items_count",
+            "date_attribution",
+            "marque",
+            "comite_conformite",
         ]
         read_only_fields = ["id_import", "date_import", "statut_import", "id_importe_par"]
+
+    date_attribution = serializers.DateField(required=False, allow_null=True)
+    marque = serializers.CharField(required=False, allow_blank=True)
+    comite_conformite = serializers.CharField(required=False, allow_blank=True)
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        if instance.id_marche:
+            ret["date_attribution"] = instance.id_marche.date_attribution
+            ret["marque"] = instance.id_marche.marque
+            ret["comite_conformite"] = instance.id_marche.comite_conformite
+        return ret
+
+    def update(self, instance, validated_data):
+        marche_data = {}
+        if "date_attribution" in validated_data:
+            marche_data["date_attribution"] = validated_data.pop("date_attribution")
+        if "marque" in validated_data:
+            marche_data["marque"] = validated_data.pop("marque")
+        if "comite_conformite" in validated_data:
+            marche_data["comite_conformite"] = validated_data.pop("comite_conformite")
+            
+        instance = super().update(instance, validated_data)
+        
+        if marche_data and instance.id_marche:
+            for k, v in marche_data.items():
+                setattr(instance.id_marche, k, v)
+            instance.id_marche.save(update_fields=list(marche_data.keys()))
+            
+        return instance
 
     def get_staging_items_count(self, obj) -> int:
         return obj.staging_items.count()
@@ -179,8 +215,15 @@ class ImportExcelBCStatusSerializer(serializers.ModelSerializer):
             "observations",
             "staging_items_count",
             "staging_items_approved_count",
+            "date_attribution",
+            "marque",
+            "comite_conformite",
         ]
         read_only_fields = fields
+
+    date_attribution = serializers.DateField(source="id_marche.date_attribution", read_only=True)
+    marque = serializers.CharField(source="id_marche.marque", read_only=True)
+    comite_conformite = serializers.CharField(source="id_marche.comite_conformite", read_only=True)
 
     def _get_counts(self, obj):
         counts = getattr(obj, "_staging_counts", None)

@@ -12,13 +12,13 @@ class MarcheBC(models.Model):
         ("donation", "donation"),
     ]
     STATUT_CHOICES = [
-        ("en_attente_livraison", "en_attente_livraison"),
-        ("receptionne_et_stocke", "receptionne_et_stocke"),
-        ("refuse", "refuse"),
+        ("en_attente_livraison", "en attente de livraison"),
+        ("receptionne_et_stocke", "Réception et stockée"),
+        ("refuse", "refus (motif)"),
     ]
     DELAIS_PAR_TYPE = {
         "marche": 90,
-        "bon_commande": 40,
+        "bon_commande": None,  # variable — from extraction or manual input
         "donation": 0,
     }
 
@@ -32,7 +32,10 @@ class MarcheBC(models.Model):
     type_acquisition = models.CharField(max_length=20, choices=TYPE_ACQUISITION_CHOICES)
     source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default="manuel", db_index=True)
     date_creation = models.DateField(auto_now_add=True)
-    delai_reception_jours = models.IntegerField()
+    date_attribution = models.DateField(null=True, blank=True)
+    marque = models.CharField(max_length=255, blank=True, default="")
+    comite_conformite = models.TextField(blank=True, default="")
+    delai_reception_jours = models.IntegerField(null=True, blank=True)
     date_livraison_prevue = models.DateField(null=True, blank=True)
     statut = models.CharField(
         max_length=30,
@@ -67,10 +70,15 @@ class MarcheBC(models.Model):
         return self.reference
 
     def save(self, *args, **kwargs):
-        is_creation = self._state.adding
-        self.delai_reception_jours = self.DELAIS_PAR_TYPE[self.type_acquisition]
-        if is_creation:
-            base_date = self.date_creation or timezone.localdate()
+        if self.type_acquisition == "marche":
+            self.delai_reception_jours = 90
+        elif self.type_acquisition == "donation":
+            self.delai_reception_jours = 0
+        # bon_commande: use the assigned delai_reception_jours (from extraction or manual)
+        # No hardcoded fallback — it stays None if not provided
+        
+        base_date = self.date_attribution or self.date_creation or timezone.localdate()
+        if self.delai_reception_jours is not None:
             self.date_livraison_prevue = base_date + timedelta(days=self.delai_reception_jours)
         super().save(*args, **kwargs)
         if is_creation:
@@ -80,10 +88,12 @@ class MarcheBC(models.Model):
 class MarcheEtape(models.Model):
     NOM_ETAPE_CHOICES = [
         ("marche_cree", "marche_cree"),
+        ("contrat_signe", "contrat_signe"),
         ("en_attente_livraison", "en_attente_livraison"),
         ("livraison_en_cours", "livraison_en_cours"),
         ("receptionne_magasin", "receptionne_magasin"),
         ("controle_qualite", "controle_qualite"),
+        ("bl_valide", "bl_valide"),
         ("stocker_au_magasin", "stocker_au_magasin"),
         ("paiement_en_cours", "paiement_en_cours"),
         ("paiement_effectue", "paiement_effectue"),
@@ -96,7 +106,7 @@ class MarcheEtape(models.Model):
     ]
 
     id_etape = models.AutoField(primary_key=True)
-    ordre = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(8)])
+    ordre = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(10)])
     nom_etape = models.CharField(max_length=30, choices=NOM_ETAPE_CHOICES)
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="en_attente")
     date_debut = models.DateTimeField(null=True, blank=True)
@@ -122,13 +132,13 @@ class MarcheEtape(models.Model):
     def create_default_etapes(cls, marche):
         default_etapes = [
             (1, "marche_cree"),
-            (2, "en_attente_livraison"),
-            (3, "livraison_en_cours"),
-            (4, "receptionne_magasin"),
-            (5, "controle_qualite"),
-            (6, "stocker_au_magasin"),
-            (7, "paiement_en_cours"),
-            (8, "paiement_effectue"),
+<<<<<<< HEAD
+            (2, "contrat_signe"),
+            (3, "en_attente_livraison"),
+            (4, "livraison_en_cours"),
+            (5, "receptionne_magasin"),
+            (6, "controle_qualite"),
+            (7, "bl_valide"),
         ]
         now = timezone.now()
         etapes = []

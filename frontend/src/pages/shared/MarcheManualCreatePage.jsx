@@ -90,6 +90,9 @@ export default function MarcheManualCreatePage() {
     delai_execution: '',
     statut_livraison: 'en_attente_livraison',
     type_acquisition: typeFromUrl,
+    date_attribution: '',
+    marque: '',
+    comite_conformite: '',
     type_donateur: '',
     nom_donateur: '',
     organisme_donateur: '',
@@ -126,10 +129,10 @@ export default function MarcheManualCreatePage() {
   const delaiError = (() => {
     const n = Number(form.delai_execution);
     if (!n) return null;
-    const max = form.type_acquisition === 'marche' ? 90 : 40;
-    return n > max
-      ? `Délai maximum pour un ${(TYPE_META[form.type_acquisition] ?? TYPE_META.marche).delaiLabel} : ${max} jours`
-      : null;
+    if (form.type_acquisition === 'marche' && n > 90) {
+      return `Délai maximum pour un marché : 90 jours`;
+    }
+    return null;
   })();
 
   // ── Submit ─────────────────────────────────────────────────────────────
@@ -159,6 +162,9 @@ export default function MarcheManualCreatePage() {
       reference_document:       form.reference_document,
       type_acquisition:         form.type_acquisition,
       statut_livraison:         form.statut_livraison,
+      date_attribution:         form.date_attribution || undefined,
+      marque:                   form.marque,
+      comite_conformite:        form.comite_conformite,
       type_donateur:            form.type_donateur,
       nom_donateur:             form.nom_donateur,
       organisme_donateur:       form.organisme_donateur,
@@ -209,6 +215,18 @@ export default function MarcheManualCreatePage() {
 
           <Field label="Référence document">
             <Input value={form.reference_document} onChange={(e) => setField('reference_document', e.target.value)} placeholder="N° référence" />
+          </Field>
+
+          <Field label="Date d'attribution">
+            <Input type="date" value={form.date_attribution} onChange={(e) => setField('date_attribution', e.target.value)} />
+          </Field>
+          
+          <Field label="Marque">
+            <Input value={form.marque} onChange={(e) => setField('marque', e.target.value)} placeholder="Marque" />
+          </Field>
+
+          <Field label="Comité de conformité (Observation/Commentaire)">
+            <Textarea value={form.comite_conformite} onChange={(e) => setField('comite_conformite', e.target.value)} placeholder="Observation..." />
           </Field>
 
           <Field label="Statut à la création">
@@ -264,14 +282,15 @@ export default function MarcheManualCreatePage() {
             <Textarea value={form.fournisseur_adresse} onChange={(e) => setField('fournisseur_adresse', e.target.value)} placeholder="Adresse complète…" />
           </Field>
 
-          <Field label="Délai de livraison (jours)">
+          <Field label="Délai de livraison (jours)" hint={form.type_acquisition === 'marche' ? 'Toujours 90 jours pour un marché' : undefined}>
             <Input
               type="number"
               min="1"
-              value={form.delai_execution}
+              value={form.type_acquisition === 'marche' ? '90' : form.delai_execution}
               onChange={(e) => setField('delai_execution', e.target.value)}
-              placeholder={form.type_acquisition === 'marche' ? 'max 90 j' : 'max 40 j'}
+              placeholder={form.type_acquisition === 'marche' ? '90 jours (fixe)' : 'Durée en jours'}
               style={{ borderColor: delaiError ? C.danger : undefined }}
+              disabled={form.type_acquisition === 'marche'}
             />
             {delaiError && <span style={{ fontSize: '0.75rem', color: C.danger }}>{delaiError}</span>}
           </Field>

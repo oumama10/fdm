@@ -99,8 +99,8 @@ function lineStatusLabel(accordee, livree, isValide) {
     if (livree > 0)                       return { label: 'Partiellement livré',  bg: '#fef3c7', color: '#92400e' };
     return                                       { label: 'Non disponible',       bg: '#f1f5f9', color: '#6b7280' };
   }
-  if (accordee > 0) return { label: 'Accordé',       bg: '#dbeafe', color: '#1e3a8a' };
-  return               { label: 'Non disponible', bg: '#f1f5f9', color: '#6b7280' };
+  if (accordee > 0) return { label: 'Accordé',  bg: '#dbeafe', color: '#1e3a8a' };
+  return               { label: 'En cours', bg: '#dbeafe', color: '#1e3a8a' };
 }
 
 // ── Component ──────────────────────────────────────────────────────────────

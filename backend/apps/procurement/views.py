@@ -217,10 +217,12 @@ class MarcheBCViewSet(viewsets.ModelViewSet):
 
     _ORDERED_ETAPES = [
         "marche_cree",
+        "contrat_signe",
         "en_attente_livraison",
         "livraison_en_cours",
         "receptionne_magasin",
         "controle_qualite",
+        "bl_valide",
         "stocker_au_magasin",
         "paiement_en_cours",
         "paiement_effectue",
@@ -590,10 +592,30 @@ class ManualImportView(APIView):
         fournisseur_email = (data.get("fournisseur_email") or "").strip()
         fournisseur_adresse = (data.get("fournisseur_adresse") or "").strip()
         delai_execution = (data.get("delai_execution") or "").strip()[:255]
+        date_attribution_raw = (data.get("date_attribution") or "").strip()
+        marque = (data.get("marque") or "").strip()[:255]
+        comite_conformite = (data.get("comite_conformite") or "").strip()
         type_donateur = (data.get("type_donateur") or "").strip()[:50]
         nom_donateur = (data.get("nom_donateur") or "").strip()[:255]
         organisme_donateur = (data.get("organisme_donateur") or "").strip()[:255]
         contact_donateur = (data.get("contact_donateur") or "").strip()[:255]
+
+        # Parse date_attribution
+        date_attribution = None
+        if date_attribution_raw:
+            from datetime import date as _date  # noqa: PLC0415
+            try:
+                date_attribution = _date.fromisoformat(date_attribution_raw)
+            except (ValueError, TypeError):
+                pass
+
+        # Parse delai_execution to an integer for delai_reception_jours
+        delai_reception_jours = None
+        if delai_execution:
+            try:
+                delai_reception_jours = int(float(delai_execution))
+            except (ValueError, TypeError):
+                pass
 
         lignes = data.get("lignes") or []
         if not isinstance(lignes, list) or len(lignes) == 0:
@@ -617,18 +639,25 @@ class ManualImportView(APIView):
                 )
 
         marche_reference = reference_document or f"MANUAL-{timezone.now().strftime('%Y%m%d%H%M%S%f')}"
-        marche = MarcheBC.objects.create(
+        marche_kwargs = dict(
             reference=marche_reference,
             type_acquisition=type_acquisition,
             statut="en_attente_livraison",
             source="manuel",
             id_cree_par=request.user,
             id_fournisseur=fournisseur_obj,
+            marque=marque,
+            comite_conformite=comite_conformite,
             type_donateur=type_donateur if type_acquisition == "donation" else "",
             nom_donateur=nom_donateur if type_acquisition == "donation" else "",
             organisme_donateur=organisme_donateur if type_acquisition == "donation" else "",
             contact_donateur=contact_donateur if type_acquisition == "donation" else "",
         )
+        if date_attribution:
+            marche_kwargs["date_attribution"] = date_attribution
+        if delai_reception_jours is not None:
+            marche_kwargs["delai_reception_jours"] = delai_reception_jours
+        marche = MarcheBC.objects.create(**marche_kwargs)
 
         import_obj = ImportExcelBC(
             titre_fichier=titre_fichier or marche_reference,

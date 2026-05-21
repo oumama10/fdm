@@ -10,7 +10,6 @@ class Role(models.Model):
         ("gestionnaire_magasin", "gestionnaire_magasin"),
         ("chef_service", "chef_service"),
         ("admin", "admin"),
-        ("fournisseur", "fournisseur"),
     ]
 
     id_role = models.AutoField(primary_key=True)
@@ -125,6 +124,7 @@ class Beneficiaire(models.Model):
         ("secretariat", "Secrétariat"),
         ("salle_de_cours", "Salle de cours"),
         ("prof", "Prof"),
+        ("personnel", "Personnel"),
     ]
 
     id_beneficiaire = models.AutoField(primary_key=True)

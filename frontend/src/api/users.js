@@ -29,5 +29,3 @@ export const deleteBatiment = (id) => apiClient.delete(`/users/batiments/${id}/`
 export const createServiceJson = (data) => apiClient.post('/users/services/', data);
 export const updateServiceJson = (id, data) => apiClient.patch(`/users/services/${id}/`, data);
 export const getBeneficiaires = (params = {}) => apiClient.get('/users/beneficiaires/', { params });
-export const createBeneficiaire = (data) => apiClient.post('/users/beneficiaires/', data);
-export const deleteBeneficiaire = (id) => apiClient.delete(`/users/beneficiaires/${id}/`);

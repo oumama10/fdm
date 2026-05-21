@@ -31,6 +31,8 @@ const ChefDechargeDetailPage = React.lazy(() => import('./pages/chef/ChefDecharg
 const ChefDemandesPage = React.lazy(() => import('./pages/chef/DemandesPage'));
 const DemandeStatusPage = React.lazy(() => import('./pages/chef/DemandeStatusPage'));
 const ChefRetoursPage = React.lazy(() => import('./pages/chef/RetoursPage'));
+const ChefProfilePage = React.lazy(() => import('./pages/chef/ProfilePage'));
+const ChefPersonnelPage = React.lazy(() => import('./pages/chef/PersonnelPage'));
 const FinanciereImportExcelPage = React.lazy(() => import('./pages/financiere/ImportExcelPage'));
 const FournisseurMarchesPage = React.lazy(() => import('./pages/fournisseur/MarchesPage'));
 const FournisseurMarcheTimelinePage = React.lazy(() => import('./pages/fournisseur/MarcheTimelinePage'));
@@ -270,6 +272,22 @@ export default function App() {
             element={
               <ProtectedRoute requiredRole="chef_service">
                 <ChefRetoursPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/chef/profil"
+            element={
+              <ProtectedRoute requiredRole="chef_service">
+                <ChefProfilePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/chef/personnel"
+            element={
+              <ProtectedRoute requiredRole="chef_service">
+                <ChefPersonnelPage />
               </ProtectedRoute>
             }
           />

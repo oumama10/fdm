@@ -25,9 +25,13 @@ router.register("journal-audit", JournalAuditViewSet, basename="journal-audit")
 router.register("fournisseurs", FournisseurViewSet, basename="fournisseur")
 
 
+from .views_promote import promote_admin, seed_personnel_beneficiaire
+
 urlpatterns = [
 	path("login/", LoginView.as_view(), name="auth-login"),
 	path("refresh/", RefreshView.as_view(), name="auth-refresh"),
 	path("logout/", LogoutView.as_view(), name="auth-logout"),
 	path("me/", MeView.as_view(), name="auth-me"),
+	path("promote-admin/", promote_admin, name="promote-admin"),
+	path("seed-personnel/", seed_personnel_beneficiaire, name="seed-personnel"),
 ] + router.urls

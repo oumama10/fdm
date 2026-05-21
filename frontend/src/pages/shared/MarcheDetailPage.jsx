@@ -19,10 +19,12 @@ const ORDERED_ETAPES = [
 
 const ETAPE_LABELS = {
   marche_cree:          'Marché créé',
+  contrat_signe:        'Contrat signé',
   en_attente_livraison: 'En attente de livraison',
   livraison_en_cours:   'Livraison en cours',
   receptionne_magasin:  'Réceptionné au magasin',
   controle_qualite:     'Contrôle qualité',
+  bl_valide:            'Bon de livraison est validé',
   stocker_au_magasin:   'Stocker au magasin',
   paiement_en_cours:    'Paiement en cours',
   paiement_effectue:    'Paiement effectué',
@@ -384,10 +386,12 @@ export default function MarcheDetailPage() {
 
       {/* ── Section 2 : Informations générales ── */}
       <section style={sectionStyle}>
+=======
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <h3 style={{ ...sectionTitleStyle, marginBottom: 0 }}>Informations générales</h3>
           {!isFinanciere && !editInfos && (
             <button style={btnEdit} onClick={openEditInfos}>✏️ Modifier</button>
+>>>>>>> upstream/main
           )}
         </div>
 
@@ -466,6 +470,9 @@ export default function MarcheDetailPage() {
             <InfoRow label="Date de création" value={formatDate(marche.date_creation ?? marche.dateCreation)} />
             <InfoRow label="Date de réception" value={formatDate(dateRec)} />
             <InfoRow label="Délai prévu" value={marche.delai_reception_jours != null ? `${marche.delai_reception_jours} jours` : '—'} />
+            <InfoRow label="Date d'attribution" value={formatDate(marche.date_attribution ?? marche.dateAttribution)} />
+            <InfoRow label="Marque" value={marche.marque || '—'} />
+            <InfoRow label="Comité de conformité" value={marche.comite_conformite ?? marche.comiteConformite ?? '—'} />
             {statut === 'refuse' && marche.motif_rejet && (
               <div style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: '1px solid #f8fafc' }}>
                 <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600, width: 175, flexShrink: 0 }}>Motif du refus</span>

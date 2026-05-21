@@ -87,7 +87,23 @@ class DemandeViewSet(viewsets.ModelViewSet):
         return obj
 
     def perform_create(self, serializer):
+        from datetime import timedelta  # noqa: PLC0415
+
         from apps.alerts.models import NotificationType  # noqa: PLC0415
+        from apps.decharge.models import SignatureDecharge  # noqa: PLC0415
+
+        # ── Block if unsigned decharge older than 48h ─────────────────────────
+        unsigned_overdue = SignatureDecharge.objects.filter(
+            id_chef_service=self.request.user,
+            statut="non_signe",
+            id_decharge__date_generation__lte=timezone.now() - timedelta(hours=48),
+        )
+        if unsigned_overdue.exists():
+            from rest_framework.exceptions import PermissionDenied  # noqa: PLC0415
+            raise PermissionDenied(
+                "Vous avez une décharge non signée depuis plus de 48h. "
+                "Veuillez signer toutes vos décharges en attente avant de soumettre une nouvelle demande."
+            )
 
         demande = serializer.save(id_chef_demandeur=self.request.user, type_demandeur="chef_service")
         self._notify_gestionnaires(
