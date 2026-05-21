@@ -78,10 +78,13 @@ class ServiceViewSet(viewsets.ModelViewSet):
         return [IsAdmin()]
 
     def get_queryset(self):
-        qs = Service.objects.all().order_by("nom_service")
+        qs = Service.objects.select_related("id_batiment__id_etablissement").order_by("nom_service")
         id_batiment = self.request.query_params.get("id_batiment")
+        id_etablissement = self.request.query_params.get("id_etablissement")
         if id_batiment:
             qs = qs.filter(id_batiment_id=id_batiment)
+        elif id_etablissement:
+            qs = qs.filter(id_batiment__id_etablissement_id=id_etablissement)
         return qs
 
 

@@ -34,3 +34,11 @@ export const confirmerReception = (marcheId) =>
 	apiClient.post(`/procurement/marches/${marcheId}/confirmer-reception/`);
 export const refuserMarche = (marcheId, data = {}) =>
 	apiClient.post(`/procurement/marches/${marcheId}/refuser/`, data);
+export const changerEtape = (marcheId, nomEtape) =>
+	apiClient.patch(`/procurement/marches/${marcheId}/changer-etape/`, { nom_etape: nomEtape });
+export const updateMarche = (marcheId, data) =>
+	apiClient.patch(`/procurement/marches/${marcheId}/`, data);
+export const updateImportFile = (importId, formData) =>
+	apiClient.patch(`/procurement/import/${importId}/`, formData, {
+		headers: { 'Content-Type': 'multipart/form-data' },
+	});

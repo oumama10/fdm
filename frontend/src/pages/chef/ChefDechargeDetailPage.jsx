@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 
-import { downloadDechargePdf, getDechargeById, getSignatureDetail } from '../../api/decharge';
+import { downloadDechargeAuto, getDechargeById, getSignatureDetail } from '../../api/decharge';
 
 // ── Design tokens ─────────────────────────────────────────────────────────
 const T = {
@@ -37,6 +37,7 @@ function fmtDateTime(iso) {
 
 const STATUT_BADGE = {
   non_generee: { label: 'Non généré', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+  non_signe:   { label: 'Non signé',  bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
   en_attente:  { label: 'Non signé',  bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
   signe:       { label: 'Signé',      bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
   valide:      { label: 'Signé',      bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
@@ -170,7 +171,7 @@ export default function ChefDechargeDetailPage() {
           )}
         </div>
 
-        {(statut === 'en_attente' || statut === 'non_generee') && (
+        {(statut === 'non_signe' || statut === 'en_attente' || statut === 'non_generee') && (
           <div style={{
             marginTop: 16, padding: '12px 16px',
             background: '#fefce8', border: '1px solid #fcd34d',
@@ -194,7 +195,7 @@ export default function ChefDechargeDetailPage() {
         </Link>
         <button
           style={btnOutline}
-          onClick={() => downloadDechargePdf(id)}
+          onClick={() => downloadDechargeAuto(id)}
         >
           &#9113; Imprimer PDF
         </button>

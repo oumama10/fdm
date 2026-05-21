@@ -70,7 +70,6 @@ class MarcheBC(models.Model):
         return self.reference
 
     def save(self, *args, **kwargs):
-        is_creation = self._state.adding
         if self.type_acquisition == "marche":
             self.delai_reception_jours = 90
         elif self.type_acquisition == "donation":
@@ -81,7 +80,6 @@ class MarcheBC(models.Model):
         base_date = self.date_attribution or self.date_creation or timezone.localdate()
         if self.delai_reception_jours is not None:
             self.date_livraison_prevue = base_date + timedelta(days=self.delai_reception_jours)
-            
         super().save(*args, **kwargs)
         if is_creation:
             MarcheEtape.create_default_etapes(self)
@@ -96,6 +94,9 @@ class MarcheEtape(models.Model):
         ("receptionne_magasin", "receptionne_magasin"),
         ("controle_qualite", "controle_qualite"),
         ("bl_valide", "bl_valide"),
+        ("stocker_au_magasin", "stocker_au_magasin"),
+        ("paiement_en_cours", "paiement_en_cours"),
+        ("paiement_effectue", "paiement_effectue"),
     ]
     STATUT_CHOICES = [
         ("en_attente", "en_attente"),
@@ -105,7 +106,7 @@ class MarcheEtape(models.Model):
     ]
 
     id_etape = models.AutoField(primary_key=True)
-    ordre = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(7)])
+    ordre = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(10)])
     nom_etape = models.CharField(max_length=30, choices=NOM_ETAPE_CHOICES)
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default="en_attente")
     date_debut = models.DateTimeField(null=True, blank=True)
@@ -131,6 +132,7 @@ class MarcheEtape(models.Model):
     def create_default_etapes(cls, marche):
         default_etapes = [
             (1, "marche_cree"),
+<<<<<<< HEAD
             (2, "contrat_signe"),
             (3, "en_attente_livraison"),
             (4, "livraison_en_cours"),

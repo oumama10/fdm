@@ -45,6 +45,7 @@ function fmtDateTime(iso) {
 
 const STATUT_BADGE = {
   non_generee: { label: 'Non généré', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+  non_signe:   { label: 'Non signé',  bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
   en_attente:  { label: 'Non signé',  bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
   signe:       { label: 'Signé',      bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
   valide:      { label: 'Signé',      bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
@@ -184,7 +185,7 @@ export default function DechargeDetailPage() {
           )}
         </div>
 
-        {statut === 'en_attente' && (
+        {(statut === 'non_signe' || statut === 'en_attente') && (
           <div style={{ marginTop: 16 }}>
             <p style={{ fontSize: 13, color: T.textMuted, margin: '0 0 12px' }}>
               Imprimez la décharge, obtenez la signature physique du chef de service, puis marquez-la comme signée.

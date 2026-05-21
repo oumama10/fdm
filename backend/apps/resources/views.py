@@ -236,6 +236,17 @@ class StockViewSet(_ReadUpdateViewSet):
 class InstanceRessourceViewSet(viewsets.ModelViewSet):
     serializer_class = InstanceRessourceSerializer
 
+    def perform_update(self, serializer):
+        # type_affectation is auto-managed — never let the request body touch it.
+        serializer.validated_data.pop("type_affectation", None)
+        instance = serializer.instance
+        if not instance.type_affectation:
+            # First assignment: auto-set to nouvelle_affectation
+            serializer.save(type_affectation="nouvelle_affectation")
+        else:
+            # Already set (nouvelle_affectation or reaffectation) — preserve as-is
+            serializer.save()
+
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [IsAuthenticated()]
@@ -245,7 +256,9 @@ class InstanceRessourceViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs = InstanceRessource.objects.select_related(
             "id_ressource",
-            "id_service_actuel",
+            "id_lieu_affectation",
+            "id_service_actuel__id_batiment__id_etablissement",
+            "id_destinataire",
             "id_lot__id_marche",
         )
 
@@ -284,23 +297,74 @@ class MouvementStockViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = MouvementStock.objects.select_related(
             "id_ressource",
-            "id_instance_ressource",
-            "id_utilisateur",
             "content_type",
-        ).all()
+        ).order_by("-date_mouvement")
         params = self.request.query_params
 
         if id_ressource := params.get("id_ressource"):
             qs = qs.filter(id_ressource=id_ressource)
         if type_mouvement := params.get("type_mouvement"):
             qs = qs.filter(type_mouvement=type_mouvement)
-        # date range: ?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
         if date_from := params.get("date_from"):
             qs = qs.filter(date_mouvement__date__gte=date_from)
         if date_to := params.get("date_to"):
             qs = qs.filter(date_mouvement__date__lte=date_to)
 
         return qs
+
+    def list(self, request, *args, **kwargs):
+        from django.contrib.contenttypes.models import ContentType
+        from apps.decharge.models import LigneDecharge
+        from apps.procurement.models import LotArticle
+
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        items = list(page if page is not None else queryset)
+
+        try:
+            ligne_ct = ContentType.objects.get_for_model(LigneDecharge)
+            lot_ct = ContentType.objects.get_for_model(LotArticle)
+        except Exception:
+            ligne_ct = lot_ct = None
+
+        ligne_ids = [m.object_id for m in items if ligne_ct and m.content_type_id == ligne_ct.id and m.object_id]
+        lot_ids = [m.object_id for m in items if lot_ct and m.content_type_id == lot_ct.id and m.object_id]
+
+        lignes_by_id = {}
+        lots_by_id = {}
+
+        if ligne_ids:
+            lignes_by_id = {
+                l.pk: l
+                for l in LigneDecharge.objects.filter(pk__in=ligne_ids).select_related(
+                    "id_decharge__id_demande__id_service__id_batiment__id_etablissement",
+                    "id_decharge__id_demande__id_beneficiaire",
+                )
+            }
+
+        if lot_ids:
+            lots_by_id = {
+                lot.pk: lot
+                for lot in LotArticle.objects.filter(pk__in=lot_ids).select_related(
+                    "id_marche__import_excel",
+                )
+            }
+
+        for m in items:
+            if ligne_ct and m.content_type_id == ligne_ct.id:
+                m._preloaded_source = lignes_by_id.get(m.object_id)
+                m._preloaded_source_model = "lignedecharge"
+            elif lot_ct and m.content_type_id == lot_ct.id:
+                m._preloaded_source = lots_by_id.get(m.object_id)
+                m._preloaded_source_model = "lotarticle"
+            else:
+                m._preloaded_source = None
+                m._preloaded_source_model = ""
+
+        serializer = self.get_serializer(items, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
 
 @api_view(["GET"])
