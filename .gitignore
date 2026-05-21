@@ -67,3 +67,9 @@ backend/tmp_*.py
 test_*.py 
 backend/fix_*.py 
 .claude/ 
+
+
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+db.sqlite3
