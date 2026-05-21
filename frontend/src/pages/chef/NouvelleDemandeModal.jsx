@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
-import { getCategories, getSousCategories, getRessources } from '../../api/resources';
+import { getRessources } from '../../api/resources';
 import { createDemande } from '../../api/requests';
 import { getEtablissements, getBatiments, getServices, getBeneficiaires, getPersonnelByService } from '../../api/users';
 import { useAuthStore } from '../../store/authStore';
@@ -66,15 +66,13 @@ function toServiceId(user) {
 export default function NouvelleDemandeModal({ onClose, onCreated }) {
   const user = useAuthStore((state) => state.user);
 
-  const [urgence, setUrgence]                       = useState('normal');
-  const [justification, setJustification]           = useState('');
-  const [typeAcquisition, setTypeAcquisition]       = useState('consommable');
-  const [categorieId, setCategorieId]               = useState('');
-  const [sousCategorieId, setSousCategorieId]       = useState('');
+  const [urgence, setUrgence]                         = useState('normal');
+  const [justification, setJustification]             = useState('');
+  const [typeAcquisition, setTypeAcquisition]         = useState('consommable');
   const [selectedRessourceId, setSelectedRessourceId] = useState('');
-  const [quantiteDemandee, setQuantiteDemandee]     = useState(1);
-  const [lignes, setLignes]                         = useState([]);
-  const [formError, setFormError]                   = useState('');
+  const [quantiteDemandee, setQuantiteDemandee]       = useState(1);
+  const [lignes, setLignes]                           = useState([]);
+  const [formError, setFormError]                     = useState('');
 
   // ── Cascading hierarchy state ───────────────────────────────────────────
   const [selectedEtabId, setSelectedEtabId]           = useState('');
@@ -131,9 +129,9 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
 
   // ── Beneficiaires for user's service ────────────────────────────────────
   const benefQuery = useQuery({
-    queryKey: ['hierarchy', 'beneficiaires', userServiceId],
-    queryFn: () => getBeneficiaires({ id_service: userServiceId }),
-    enabled: Boolean(userServiceId),
+    queryKey: ['hierarchy', 'beneficiaires', userSvcId],
+    queryFn: () => getBeneficiaires({ id_service: userSvcId }),
+    enabled: Boolean(userSvcId),
     staleTime: 300_000,
   });
   const beneficiaires = benefQuery.data?.data || [];
@@ -154,70 +152,32 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
   const isPersonnelBenef = selectedBenefId === 'personnel_group';
 
   // ── Data queries ────────────────────────────────────────────────────────
-  const categoriesQuery = useQuery({
-    queryKey: ['resources', 'categories'],
-    queryFn: getCategories,
-    staleTime: 30_000,
-  });
-  const categories = categoriesQuery.data?.data || [];
+  const _rId = (r) => r.idRessource ?? r.id_ressource;
 
-  const _catId  = (c) => c.idCategorie    ?? c.id_categorie;
-  const _catNom = (c) => c.nomCategorie   ?? c.nom_categorie;
-  const _scId   = (s) => s.idSousCategorie  ?? s.id_sous_categorie;
-  const _scNom  = (s) => s.nomSousCategorie ?? s.nom_sous_categorie;
-  const _rId    = (r) => r.idRessource    ?? r.id_ressource;
-
+  // Clear article when type changes
   useEffect(() => {
-    setCategorieId('');
-    setSousCategorieId('');
     setSelectedRessourceId('');
   }, [typeAcquisition]);
 
-  // Filter categories client-side by selected type
-  const filteredCategories = useMemo(() => {
-    return categories.filter((c) => {
-      const ta = c.typeArticle ?? c.type_article;
-      const typeNom = ta?.nomCategorie ?? ta?.nom_categorie ?? '';
-      return typeNom === typeAcquisition;
-    });
-  }, [categories, typeAcquisition]);
-
-  // Auto-select first category when filtered list changes
-  useEffect(() => {
-    if (!filteredCategories.length) { setCategorieId(''); return; }
-    const still = filteredCategories.some((c) => String(_catId(c)) === String(categorieId));
-    if (!still) setCategorieId(String(_catId(filteredCategories[0])));
-  }, [filteredCategories]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Sous-categories for selected category
-  const sousCatsQuery = useQuery({
-    queryKey: ['resources', 'sous-categories', categorieId],
-    queryFn: () => getSousCategories({ id_categorie: categorieId }),
-    enabled: Boolean(categorieId),
-    staleTime: 30_000,
-  });
-  const sousCategories = sousCatsQuery.data?.data || [];
-
-  useEffect(() => {
-    setSousCategorieId('');
-    setSelectedRessourceId('');
-  }, [categorieId]);
-
+  // Fetch articles filtered by selected type
   const ressourcesQuery = useQuery({
-    queryKey: ['resources', 'ressources', categorieId, sousCategorieId],
-    queryFn: () => getRessources({
-      id_categorie: categorieId,
-      ...(sousCategorieId ? { id_sous_categorie: sousCategorieId } : {}),
-    }),
-    enabled: Boolean(categorieId),
+    queryKey: ['resources', 'ressources', 'by-type', typeAcquisition],
+    queryFn: () => getRessources({ type: typeAcquisition }),
+    staleTime: 30_000,
   });
   const ressources = ressourcesQuery.data?.data || [];
 
-  useEffect(() => {
-    if (!ressources.some((r) => String(_rId(r)) === String(selectedRessourceId))) {
-      setSelectedRessourceId('');
-    }
-  }, [ressources]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Derive category/sub-category from the selected article
+  const selectedRessource = useMemo(
+    () => ressources.find((r) => String(_rId(r)) === String(selectedRessourceId)) ?? null,
+    [ressources, selectedRessourceId], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const autoCategorieNom = selectedRessource?.categorie?.nomCategorie
+    ?? selectedRessource?.categorie?.nom_categorie
+    ?? '';
+  const autoSousCategorieNom = selectedRessource?.sousCategorie?.nomSousCategorie
+    ?? selectedRessource?.sous_categorie?.nom_sous_categorie
+    ?? '';
 
   // ── Mutations ───────────────────────────────────────────────────────────
   const createMutation = useMutation({
@@ -259,7 +219,7 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
 
   async function handleSubmit() {
     setFormError('');
-    if (!userServiceId) { setFormError('Votre compte n\'est pas associé à un service.'); return; }
+    if (!userSvcId) { setFormError('Votre compte n\'est pas associé à un service.'); return; }
     if (!selectedBenefId) { setFormError('Veuillez sélectionner un bénéficiaire.'); return; }
     if (!lignes.length) { setFormError('Ajoutez au moins une ligne.'); return; }
 
@@ -296,7 +256,7 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
       beneficiaire_nom: benefNom,
       beneficiaire_detail: benefDetail,
       justification,
-      id_service: serviceId,
+      id_service: userSvcId,
       id_beneficiaire: actualBenefId,
       lignes: lignes.map((l) => ({
         id_ressource: Number(l.id_ressource),
@@ -304,8 +264,6 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
       })),
     });
   }
-
-  const isBienInventaire = typeAcquisition === 'bien_inventaire';
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
@@ -465,55 +423,43 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
             </div>
           </section>
 
-          {/* Catégorie */}
-          <section style={sectionCardStyle}>
-            <h3 style={sectionTitleStyle}>Catégorie</h3>
-            <div style={isBienInventaire ? row2Style : {}}>
-              <Field label="Catégorie" required>
-                <Select
-                  value={categorieId}
-                  onChange={(e) => { setCategorieId(e.target.value); setSousCategorieId(''); setSelectedRessourceId(''); }}
-                >
-                  <option value="">— Choisir —</option>
-                  {filteredCategories.map((c) => (
-                    <option key={_catId(c)} value={_catId(c)}>{_catNom(c)}</option>
-                  ))}
-                </Select>
-              </Field>
-              {isBienInventaire && (
-                <Field label="Sous-catégorie">
-                  <Select
-                    value={sousCategorieId}
-                    onChange={(e) => { setSousCategorieId(e.target.value); setSelectedRessourceId(''); }}
-                    style={{ color: !categorieId ? C.textMuted : undefined }}
-                    disabled={!categorieId}
-                  >
-                    <option value="">— Toutes —</option>
-                    {sousCategories.map((s) => (
-                      <option key={_scId(s)} value={_scId(s)}>{_scNom(s)}</option>
-                    ))}
-                  </Select>
-                </Field>
-              )}
-            </div>
-          </section>
-
           {/* Ajouter un article */}
           <section style={sectionCardStyle}>
             <h3 style={sectionTitleStyle}>Ajouter un article</h3>
-            <div style={addArticleRowStyle}>
-              <Field label="Article">
-                <Select
-                  value={selectedRessourceId}
-                  onChange={(e) => setSelectedRessourceId(e.target.value)}
-                  style={{ color: !selectedRessourceId ? C.textMuted : undefined }}
-                >
-                  <option value="">{"Sélectionner un article…"}</option>
-                  {ressources.map((r) => (
-                    <option key={_rId(r)} value={_rId(r)}>{r.designation}</option>
-                  ))}
-                </Select>
+            {/* Article dropdown */}
+            <Field label="Article">
+              <Select
+                value={selectedRessourceId}
+                onChange={(e) => setSelectedRessourceId(e.target.value)}
+                style={{ color: !selectedRessourceId ? C.textMuted : undefined }}
+              >
+                <option value="">{"Sélectionner un article…"}</option>
+                {ressources.map((r) => (
+                  <option key={_rId(r)} value={_rId(r)}>{r.designation}</option>
+                ))}
+              </Select>
+            </Field>
+            {/* Auto-populated Catégorie / Sous-catégorie */}
+            <div style={row2Style}>
+              <Field label="Catégorie">
+                <Input
+                  value={autoCategorieNom}
+                  readOnly
+                  placeholder="— auto —"
+                  style={{ color: autoCategorieNom ? C.textSecondary : C.textMuted, background: C.bgSubtle }}
+                />
               </Field>
+              <Field label="Sous-catégorie">
+                <Input
+                  value={autoSousCategorieNom}
+                  readOnly
+                  placeholder="— auto —"
+                  style={{ color: autoSousCategorieNom ? C.textSecondary : C.textMuted, background: C.bgSubtle }}
+                />
+              </Field>
+            </div>
+            {/* Quantité + Add button */}
+            <div style={addQtyRowStyle}>
               <Field label="Quantité">
                 <Input
                   type="number"
@@ -522,12 +468,12 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
                   onChange={(e) => setQuantiteDemandee(e.target.value)}
                 />
               </Field>
-              <button type="button" style={addBtnStyle} onClick={handleAddLigne}>
+              <button type="button" style={{ ...addBtnStyle, alignSelf: 'end' }} onClick={handleAddLigne}>
                 + Ajouter
               </button>
             </div>
-            {Boolean(categorieId) && !ressources.length && (
-              <p style={emptyHintStyle}>Aucun article disponible dans cette catégorie.</p>
+            {!ressources.length && (
+              <p style={emptyHintStyle}>Aucun article disponible pour ce type.</p>
             )}
           </section>
 
@@ -736,6 +682,13 @@ const chipStyle = (active) => ({
 const addArticleRowStyle = {
   display: 'grid',
   gridTemplateColumns: '1fr 5rem auto',
+  gap: '0.75rem',
+  alignItems: 'end',
+};
+
+const addQtyRowStyle = {
+  display: 'grid',
+  gridTemplateColumns: '5rem auto',
   gap: '0.75rem',
   alignItems: 'end',
 };

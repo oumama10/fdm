@@ -102,7 +102,7 @@ const EMPTY_FORM = {
   designation: '',
   marque: '',
   description: '',
-  uniteMesure: 'unité',
+  uniteMesure: 'unite',
   idType: '',
   idCategorie: '',
   idSousCategorie: '',
@@ -392,7 +392,7 @@ function ArticlesTab({ queryClient }) {
       designation:    r.designation ?? '',
       marque:         r.marque ?? '',
       description:    r.description ?? '',
-      uniteMesure:    r.uniteMesure ?? r.unite_mesure ?? 'unité',
+      uniteMesure:    r.uniteMesure ?? r.unite_mesure ?? 'unite',
       type:           isC ? 'consommable' : 'bien_inventaire',
       categorie:      getCatNom(r.categorie ?? r.idCategorie ?? {}),
       sousCategorie:  sub ? (sub.nomSousCategorie ?? sub.nom_sous_categorie ?? '') : '—',
@@ -466,7 +466,7 @@ function ArticlesTab({ queryClient }) {
       designation:       form.designation.trim(),
       marque:            form.marque.trim(),
       description:       form.description.trim(),
-      unite_mesure:      form.uniteMesure.trim() || 'unité',
+      unite_mesure:      form.uniteMesure || 'unite',
       id_type:           Number(form.idType),
       id_categorie:      form.idCategorie ? Number(form.idCategorie) : null,
       id_sous_categorie: form.idSousCategorie ? Number(form.idSousCategorie) : null,
@@ -809,12 +809,18 @@ function ArticlesTab({ queryClient }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <label style={labelStyle}>
                   Unité de mesure
-                  <input
+                  <select
                     value={form.uniteMesure}
                     onChange={(e) => setField('uniteMesure', e.target.value)}
                     style={inputStyle}
-                    placeholder="unité"
-                  />
+                  >
+                    <option value="unite">Unité</option>
+                    <option value="kg">Kilogramme</option>
+                    <option value="litre">Litre</option>
+                    <option value="boite">Boîte</option>
+                    <option value="ramette">Ramette</option>
+                    <option value="autre">Autre</option>
+                  </select>
                 </label>
                 <label style={labelStyle}>
                   Seuil d'alerte
@@ -2639,9 +2645,11 @@ const SUIVI_STATUT_OPTS = [
 
 function SuiviAffectationTab({ queryClient }) {
   const [search,       setSearch]       = useState('');
-  const [statutFilter, setStatutFilter] = useState('all');
+  const [statutFilter, setStatutFilter] = useState('en_service');
   const [page,         setPage]         = useState(1);
   const [affectModal,  setAffectModal]  = useState(null);
+  const [affectNew,    setAffectNew]    = useState(false);
+  const [newPickedId,  setNewPickedId]  = useState('');
   const [histModal,    setHistModal]    = useState(null);
   const [affectForm,   setAffectForm]   = useState({
     statut: 'en_service', idServiceActuel: '', idLieuAffectation: '', idDestinataire: '',
@@ -2701,12 +2709,29 @@ function SuiviAffectationTab({ queryClient }) {
 
   useEffect(() => setPage(1), [search, statutFilter]);
 
+  // Auto-fill form when a new instance is picked from the toolbar modal
+  useEffect(() => {
+    if (!newPickedId) return;
+    const inst = instances.find((i) => String(i.idInstance ?? i.id_instance) === newPickedId);
+    if (!inst) return;
+    setAffectForm({
+      statut:                  inst.statut ?? 'en_service',
+      idServiceActuel:         String(inst.idServiceActuel   ?? inst.id_service_actuel   ?? ''),
+      idLieuAffectation:       String(inst.idLieuAffectation ?? inst.id_lieu_affectation ?? ''),
+      idDestinataire:          String(inst.idDestinataire    ?? inst.id_destinataire     ?? ''),
+      etat:                    inst.etat ?? 'bon_etat',
+      observation:             inst.observation ?? '',
+      dateDerniereAffectation: new Date().toISOString().split('T')[0],
+    });
+  }, [newPickedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Mutation ──────────────────────────────────────────────────────────────
   const affectM = useMutation({
     mutationFn: ({ id, data }) => updateInstance(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['resources', 'instances'] });
       setAffectModal(null);
+      setAffectNew(false);
     },
     onError: () => setAffectErr('Erreur lors de la mise à jour.'),
   });
@@ -2744,6 +2769,23 @@ function SuiviAffectationTab({ queryClient }) {
     });
   }
 
+  function submitAffectNew() {
+    if (!newPickedId) { setAffectErr('Sélectionnez une instance.'); return; }
+    const toNullId = (v) => (v === '' || v == null) ? null : Number(v);
+    affectM.mutate({
+      id: Number(newPickedId),
+      data: {
+        statut:                    affectForm.statut,
+        id_service_actuel:         toNullId(affectForm.idServiceActuel),
+        id_lieu_affectation:       toNullId(affectForm.idLieuAffectation),
+        id_destinataire:           toNullId(affectForm.idDestinataire),
+        etat:                      affectForm.etat,
+        observation:               affectForm.observation,
+        date_derniere_affectation: affectForm.dateDerniereAffectation || null,
+      },
+    });
+  }
+
   // ── Local styles ──────────────────────────────────────────────────────────
   const overlay     = { position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)', display: 'grid', placeItems: 'center', padding: 16 };
   const panel       = { width: 'min(520px, 96vw)', background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 24px 64px rgba(15,23,42,0.20)', padding: 24, maxHeight: '90vh', overflowY: 'auto' };
@@ -2756,28 +2798,26 @@ function SuiviAffectationTab({ queryClient }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      {/* ── Search ── */}
-      <div style={{ position: 'relative', maxWidth: 420 }}>
-        <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Rechercher par N° inventaire ou article"
-          style={{ width: '100%', boxSizing: 'border-box', padding: '9px 14px 9px 36px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, outline: 'none' }}
-        />
+      {/* ── Search + Affecter button ── */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: '1 1 0', maxWidth: 420 }}>
+          <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher par N° inventaire ou article"
+            style={{ width: '100%', boxSizing: 'border-box', padding: '9px 14px 9px 36px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: 13, outline: 'none' }}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => { setAffectNew(true); setNewPickedId(''); setAffectForm({ statut: 'en_service', idServiceActuel: '', idLieuAffectation: '', idDestinataire: '', etat: 'bon_etat', observation: '', dateDerniereAffectation: new Date().toISOString().split('T')[0] }); setAffectErr(''); }}
+          style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#0C447C', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+        >
+          + Affecter
+        </button>
       </div>
 
-      {/* ── Statut filter chips ── */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {SUIVI_STATUT_OPTS.map((opt) => (
-          <button key={opt.key} type="button" onClick={() => setStatutFilter(opt.key)} style={{
-            padding: '5px 14px', borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '1px solid',
-            borderColor: statutFilter === opt.key ? '#0C447C' : '#e2e8f0',
-            background:  statutFilter === opt.key ? '#E6F1FB'  : '#fff',
-            color:       statutFilter === opt.key ? '#0C447C'  : '#64748b',
-          }}>{opt.label}</button>
-        ))}
-      </div>
 
       {/* ── Table ── */}
       <div style={WORKSPACE_TABLE_STYLE}>
@@ -2931,6 +2971,95 @@ function SuiviAffectationTab({ queryClient }) {
             <div style={modalFooter}>
               <button type="button" onClick={() => setAffectModal(null)} style={TOOLBAR_BUTTON_STYLE}>Annuler</button>
               <button type="button" onClick={submitAffect} disabled={affectM.isPending} style={{ ...PRIMARY_TOOLBAR_BUTTON_STYLE, opacity: affectM.isPending ? 0.7 : 1 }}>
+                {affectM.isPending ? 'Enregistrement…' : 'Confirmer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal : Nouvelle Affectation (toolbar button) ── */}
+      {affectNew && (
+        <div style={overlay} onClick={() => setAffectNew(false)}>
+          <div style={panel} onClick={(e) => e.stopPropagation()}>
+            <div style={modalHead}>
+              <span style={mTitle}>Affecter un bien</span>
+              <button type="button" onClick={() => setAffectNew(false)} style={closeBtn}><X size={15} color="#475569" /></button>
+            </div>
+            {affectErr && <div style={errBox}>{affectErr}</div>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <label style={labelStyle}>
+                Instance (N° inventaire)
+                <select
+                  value={newPickedId}
+                  onChange={(e) => { setNewPickedId(e.target.value); setAffectErr(''); }}
+                  style={inputStyle}
+                >
+                  <option value="">— Sélectionner —</option>
+                  {instances.filter((i) => i.statut === 'en_stock').map((i) => {
+                    const id  = i.idInstance ?? i.id_instance;
+                    const num = i.numeroInventaire ?? i.numero_inventaire ?? id;
+                    const des = i.ressource?.designation ?? '';
+                    return <option key={id} value={String(id)}>{num}{des ? ` — ${des}` : ''}</option>;
+                  })}
+                </select>
+              </label>
+              <label style={labelStyle}>
+                Statut
+                <select value={affectForm.statut} onChange={(e) => setAffectForm((f) => ({ ...f, statut: e.target.value }))} style={inputStyle}>
+                  <option value="en_stock">En stock</option>
+                  <option value="en_service">En service</option>
+                  <option value="en_maintenance">En maintenance</option>
+                </select>
+              </label>
+              <label style={labelStyle}>
+                Service
+                <select value={affectForm.idServiceActuel} onChange={(e) => setAffectForm((f) => ({ ...f, idServiceActuel: e.target.value }))} style={inputStyle}>
+                  <option value="">— Aucun —</option>
+                  {services.map((svc) => {
+                    const id = svc.idService ?? svc.id_service;
+                    return <option key={id} value={id}>{svc.nomService ?? svc.nom_service}</option>;
+                  })}
+                </select>
+              </label>
+              <label style={labelStyle}>
+                Établissement
+                <select value={affectForm.idLieuAffectation} onChange={(e) => setAffectForm((f) => ({ ...f, idLieuAffectation: e.target.value }))} style={inputStyle}>
+                  <option value="">— Aucun —</option>
+                  {etabs.map((et) => {
+                    const id = et.idEtablissement ?? et.id_etablissement;
+                    return <option key={id} value={id}>{et.nom}</option>;
+                  })}
+                </select>
+              </label>
+              <label style={labelStyle}>
+                Destinataire (optionnel)
+                <select value={affectForm.idDestinataire} onChange={(e) => setAffectForm((f) => ({ ...f, idDestinataire: e.target.value }))} style={inputStyle}>
+                  <option value="">— Aucun —</option>
+                  {beneficiaires.map((b) => {
+                    const id = b.idBeneficiaire ?? b.id_beneficiaire;
+                    return <option key={id} value={id}>{b.nom}</option>;
+                  })}
+                </select>
+              </label>
+              <label style={labelStyle}>
+                État
+                <select value={affectForm.etat} onChange={(e) => setAffectForm((f) => ({ ...f, etat: e.target.value }))} style={inputStyle}>
+                  {ETAT_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </label>
+              <label style={labelStyle}>
+                Observation
+                <textarea value={affectForm.observation} onChange={(e) => setAffectForm((f) => ({ ...f, observation: e.target.value }))} style={{ ...inputStyle, minHeight: 72, resize: 'vertical' }} placeholder="Notes complémentaires…" />
+              </label>
+              <label style={labelStyle}>
+                Date d'affectation
+                <input type="date" value={affectForm.dateDerniereAffectation} onChange={(e) => setAffectForm((f) => ({ ...f, dateDerniereAffectation: e.target.value }))} style={inputStyle} />
+              </label>
+            </div>
+            <div style={modalFooter}>
+              <button type="button" onClick={() => setAffectNew(false)} style={TOOLBAR_BUTTON_STYLE}>Annuler</button>
+              <button type="button" onClick={submitAffectNew} disabled={affectM.isPending || !newPickedId} style={{ ...PRIMARY_TOOLBAR_BUTTON_STYLE, opacity: (affectM.isPending || !newPickedId) ? 0.7 : 1 }}>
                 {affectM.isPending ? 'Enregistrement…' : 'Confirmer'}
               </button>
             </div>

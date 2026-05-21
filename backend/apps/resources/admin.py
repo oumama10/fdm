@@ -39,7 +39,7 @@ class RessourceAdmin(admin.ModelAdmin):
 
 @admin.register(Stock)
 class StockAdmin(admin.ModelAdmin):
-    list_display = ["id_ressource", "quantite_disponible", "seuil_alerte", "date_mise_a_jour"]
+    list_display = ["id_ressource", "quantite_disponible", "seuil_alerte", "updated_at"]
     search_fields = ["id_ressource__designation"]
 
 

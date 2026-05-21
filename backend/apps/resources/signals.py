@@ -67,7 +67,7 @@ def _notify_gestionnaires_for_stock(stock_id: int) -> None:
                 f"{stock.quantite_disponible} unité(s), "
                 f"en dessous du seuil d'alerte ({stock.seuil_alerte})."
             ),
-            objet_id=stock.id_stock,
+            content_object=stock,
             lien=f"/gestionnaire/stock/{stock.id_stock}/",
             window_minutes=1440,
         )

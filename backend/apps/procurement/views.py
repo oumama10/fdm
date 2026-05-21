@@ -122,7 +122,7 @@ class MarcheBCViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = MarcheBC.objects.select_related(
-            "id_fournisseur", "id_cree_par", "import_excel"
+            "id_fournisseur", "id_cree_par", "id_rejete_par", "import_excel"
         ).prefetch_related("etapes")
 
         user = self.request.user
@@ -183,7 +183,7 @@ class MarcheBCViewSet(viewsets.ModelViewSet):
         import_obj = getattr(marche, "import_excel", None)
         if import_obj:
             items = StagingItem.objects.filter(id_import=import_obj).select_related(
-                "id_ressource_liee", "id_categorie_suggeree", "id_sous_categorie_suggeree"
+                "id_ressource_liee", "id_type_suggeree", "id_sous_categorie_suggeree"
             )
             
             unclassified = []
@@ -292,7 +292,9 @@ class MarcheBCViewSet(viewsets.ModelViewSet):
         motif = str(request.data.get("motif_rejet") or "").strip()
         marche.statut = "refuse"
         marche.motif_rejet = motif
-        marche.save(update_fields=["statut", "motif_rejet"])
+        marche.date_rejet = timezone.localdate()
+        marche.id_rejete_par = request.user
+        marche.save(update_fields=["statut", "motif_rejet", "date_rejet", "id_rejete_par"])
 
         # Also mark associated import as rejected
         import_obj = getattr(marche, "import_excel", None)
@@ -455,7 +457,7 @@ class ImportExcelBCViewSet(
                     f"L'import #{import_obj.id_import} contient {item_count} article(s) "
                     "en attente de validation."
                 ),
-                objet_id=import_obj.id_import,
+                content_object=import_obj,
                 lien=f"/gestionnaire/donnees-extraites/{import_obj.id_import}/",
             )
 
@@ -743,7 +745,7 @@ class ManualImportView(APIView):
                     prix_unitaire_ht=_to_decimal(ligne.get("prix_unitaire_ht")),
                     prix_total_ht=_to_decimal(ligne.get("prix_total_ht")),
                     type_detecte=type_detecte,
-                    id_categorie_suggeree_id=categorie_id,
+                    id_type_suggeree_id=categorie_id,
                     id_sous_categorie_suggeree_id=sous_categorie_id,
                     statut="en_attente",
                 )
@@ -760,7 +762,7 @@ class ManualImportView(APIView):
             from .signals import _find_or_create_ressource, _integrate_item_into_stock, _sync_marche_reference  # noqa: PLC0415
 
             for item in StagingItem.objects.filter(id_import=import_obj).select_related(
-                "id_ressource_liee", "id_categorie_suggeree", "id_sous_categorie_suggeree"
+                "id_ressource_liee", "id_type_suggeree", "id_sous_categorie_suggeree"
             ):
                 ressource = _find_or_create_ressource(item)
                 if ressource:
@@ -802,7 +804,7 @@ class _NoCreateViewSet(
 _MODIFIE_TRACKED = (
     "designation_normalisee",
     "type_detecte",
-    "id_categorie_suggeree_id",
+    "id_type_suggeree_id",
     "id_sous_categorie_suggeree_id",
     "quantite",
     "prix_unitaire_ht",
@@ -830,7 +832,7 @@ class StagingItemViewSet(_NoCreateViewSet):
     def get_queryset(self):
         qs = StagingItem.objects.select_related(
             "id_import",
-            "id_categorie_suggeree",
+            "id_type_suggeree",
             "id_ressource_liee",
         ).all()
         if id_import := self.request.query_params.get("id_import"):

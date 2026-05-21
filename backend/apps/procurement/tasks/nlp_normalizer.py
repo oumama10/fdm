@@ -189,14 +189,14 @@ def _similarity(a: str, b: str) -> float:
 
 def _lookup_categorie(nom_categorie: str) -> int | None:
     """
-    Return the ``id_categorie`` PK of the active ``TypeArticle`` whose
+    Return the ``id_type_article`` PK of the active ``TypeArticle`` whose
     ``nom_categorie`` matches *nom_categorie* (case-insensitive), or ``None``.
     """
     from apps.resources.models import TypeArticle  # noqa: PLC0415
 
     return (
         TypeArticle.objects.filter(nom_categorie=nom_categorie.lower(), actif=True)
-        .values_list("id_categorie", flat=True)
+        .values_list("id_type_article", flat=True)
         .first()
     )
 
@@ -257,7 +257,7 @@ def normalize_designation(raw_text: str) -> dict:
     dict
         designation_normalisee  (str)       — cleaned, accent-free text
         type_detecte            (str)       — 'consommable' | 'bien_inventaire' | ''
-        id_categorie_suggeree   (int|None)  — FK to resources.TypeArticle
+        id_type_suggeree        (int|None)  — FK to resources.TypeArticle
         id_ressource_liee       (int|None)  — FK to resources.Ressource
         confiance_ia            (float)     — confidence score 0.0 – 1.0
 
@@ -332,7 +332,7 @@ def normalize_designation(raw_text: str) -> dict:
     return {
         "designation_normalisee": cleaned,
         "type_detecte": type_detecte,
-        "id_categorie_suggeree": id_categorie,
+        "id_type_suggeree": id_categorie,
         "id_ressource_liee": id_ressource,
         "confiance_ia": confidence,
     }

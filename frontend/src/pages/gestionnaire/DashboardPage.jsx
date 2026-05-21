@@ -44,10 +44,10 @@ const URGENCE_BADGES = {
 };
 
 const DEMANDE_STATUT_BADGES = {
-  en_attente: { label: 'En attente', bg: 'bg-brand-100', text: 'text-brand-700' },
-  partielle: { label: 'Partielle', bg: 'bg-gold-100', text: 'text-gold-600' },
-  totale: { label: 'Totale', bg: 'bg-green-50', text: 'text-green-700' },
-  refusee: { label: 'Refusée', bg: 'bg-red-50', text: 'text-red-600' },
+  en_cours:    { label: 'En cours',    bg: 'bg-blue-50',   text: 'text-blue-700'   },
+  traite:      { label: 'Traité',      bg: 'bg-green-50',  text: 'text-green-700'  },
+  en_instance: { label: 'En instance', bg: 'bg-orange-50', text: 'text-orange-600' },
+  refuse:      { label: 'Refusé',      bg: 'bg-red-50',    text: 'text-red-600'    },
 };
 
 function pick(...values) {

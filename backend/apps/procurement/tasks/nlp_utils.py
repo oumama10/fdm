@@ -64,7 +64,7 @@ def normalize_designation(designation: str) -> dict:
     Returns a dict with:
         designation_normalisee  (str)   — cleaned designation text
         type_detecte            (str)   — 'consommable' | 'bien_inventaire' | ''
-        id_categorie_suggeree   (int|None)
+        id_type_suggeree        (int|None)
         id_ressource_liee       (int|None)
         confiance_ia            (float) — 0.0 to 1.0
     """
@@ -95,7 +95,7 @@ def normalize_designation(designation: str) -> dict:
     return {
         "designation_normalisee": cleaned,
         "type_detecte": type_detecte,
-        "id_categorie_suggeree": None,
+        "id_type_suggeree": None,
         "id_ressource_liee": None,
         "confiance_ia": confiance_ia,
     }

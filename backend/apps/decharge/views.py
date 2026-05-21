@@ -69,10 +69,8 @@ def _update_demande_delivery_on_signature_validated(decharge: Decharge) -> None:
 
         # Recalculate demande status
         all_lignes = list(demande.lignes.all())
-        if all(l.quantite_livree >= l.quantite_demandee for l in all_lignes):
-            new_statut = "totale"
-        elif any(l.quantite_livree > 0 for l in all_lignes):
-            new_statut = "partielle"
+        if any(l.quantite_livree > 0 for l in all_lignes):
+            new_statut = "traite"
         else:
             return  # nothing delivered — leave statut unchanged
 
@@ -95,7 +93,7 @@ def _notify_chef(decharge: Decharge, notification_type, message: str) -> None:
             chef,
             notification_type,
             message,
-            objet_id=decharge.pk,
+            content_object=decharge,
             lien=f"/chef/decharges/{decharge.pk}/",
         )
     except Exception:
@@ -118,7 +116,7 @@ def _notify_gestionnaires(decharge: Decharge, titre: str, message: str) -> None:
                 gestionnaire,
                 NotificationType.DECHARGE_SIGNEE,
                 message,
-                objet_id=decharge.pk,
+                content_object=decharge,
                 lien=f"/gestionnaire/decharges/{decharge.pk}/",
             )
     except Exception:

@@ -19,19 +19,17 @@ const URGENCE_BADGE = {
   urgent: { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
 };
 const STATUT_BADGE = {
-  en_attente: { bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd' },
-  en_cours:   { bg: '#dbeafe', color: '#1e3a8a', border: '#93c5fd' },
-  partielle:  { bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
-  totale:     { bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
-  refusee:    { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
+  en_cours:    { bg: '#dbeafe', color: '#1e3a8a', border: '#93c5fd' },
+  traite:      { bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
+  en_instance: { bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
+  refuse:      { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
 };
 
 const STATUT_LABELS = {
-  en_attente: 'En attente',
-  en_cours:   'En cours',
-  partielle:  'Partielle',
-  totale:     'Totale',
-  refusee:    'Refusée',
+  en_cours:    'En cours',
+  traite:      'Traité',
+  en_instance: 'En instance',
+  refuse:      'Refusé',
 };
 const URGENCE_LABELS = {
   normal: 'Normal',
@@ -135,11 +133,10 @@ export default function DemandesPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
             <select value={statut} onChange={(e) => setStatut(e.target.value)} style={selectStyle}>
               <option value="">Tous statuts</option>
-              <option value="en_attente">En attente</option>
               <option value="en_cours">En cours</option>
-              <option value="partielle">Partielle</option>
-              <option value="totale">Totale</option>
-              <option value="refusee">Refusée</option>
+              <option value="traite">Traité</option>
+              <option value="en_instance">En instance</option>
+              <option value="refuse">Refusé</option>
             </select>
 
             <select value={urgence} onChange={(e) => setUrgence(e.target.value)} style={selectStyle}>

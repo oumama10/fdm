@@ -29,3 +29,11 @@ export const deleteBatiment = (id) => apiClient.delete(`/users/batiments/${id}/`
 export const createServiceJson = (data) => apiClient.post('/users/services/', data);
 export const updateServiceJson = (id, data) => apiClient.patch(`/users/services/${id}/`, data);
 export const getBeneficiaires = (params = {}) => apiClient.get('/users/beneficiaires/', { params });
+export const createBeneficiaire = (data) => apiClient.post('/users/beneficiaires/', data);
+export const updateBeneficiaire = (id, data) => apiClient.patch(`/users/beneficiaires/${id}/`, data);
+export const deleteBeneficiaire = (id) => apiClient.delete(`/users/beneficiaires/${id}/`);
+
+export const getMyProfile = () => apiClient.get('/users/me/');
+export const updateMyProfile = (data) => apiClient.patch('/users/me/', data);
+
+export const getPersonnelByService = (serviceId) => apiClient.get('/users/beneficiaires/', { params: { id_service: serviceId } });

@@ -101,7 +101,6 @@ class UtilisateurSerializer(serializers.ModelSerializer):
             "is_gestionnaire",
             "is_chef_service",
             "is_financiere",
-            "is_fournisseur",
             "is_admin",
         ]
         read_only_fields = [
@@ -113,7 +112,6 @@ class UtilisateurSerializer(serializers.ModelSerializer):
             "is_gestionnaire",
             "is_chef_service",
             "is_financiere",
-            "is_fournisseur",
             "is_admin",
         ]
 
@@ -133,7 +131,6 @@ class UserMeSerializer(serializers.ModelSerializer):
             "titre_poste",
             "role",
             "service",
-            "is_fournisseur",
             "fournisseur_id",
         ]
 
@@ -322,11 +319,16 @@ class UtilisateurAdminSerializer(serializers.ModelSerializer):
 class JournalAuditSerializer(serializers.Serializer):
     id_log = serializers.IntegerField(read_only=True)
     type_action = serializers.CharField(read_only=True)
-    table_cible = serializers.CharField(read_only=True)
-    id_enregistrement_cible = serializers.IntegerField(read_only=True)
-    ancienne_valeur = serializers.CharField(read_only=True)
-    nouvelle_valeur = serializers.CharField(read_only=True)
+    content_type = serializers.SerializerMethodField(read_only=True)
+    id_enregistrement_cible = serializers.IntegerField(read_only=True, allow_null=True)
+    ancienne_valeur = serializers.JSONField(read_only=True, allow_null=True)
+    nouvelle_valeur = serializers.JSONField(read_only=True, allow_null=True)
     date_action = serializers.DateTimeField(read_only=True)
     adresse_ip = serializers.CharField(read_only=True, allow_blank=True, allow_null=True)
     user_agent = serializers.CharField(read_only=True, allow_blank=True)
     id_utilisateur = UtilisateurSerializer(read_only=True)
+
+    def get_content_type(self, obj):
+        if obj.content_type_id is None:
+            return None
+        return str(obj.content_type)

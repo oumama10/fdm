@@ -26,7 +26,7 @@ def _sync_marche_reference(marche, import_obj):
 
 def _find_or_create_ressource(instance):
     """Find or create a Ressource for a staging item. Returns None if cannot resolve."""
-    from apps.resources.models import TypeArticle, Ressource
+    from apps.resources.models import TypeArticle, Ressource, normalize_unite_mesure
 
     ressource = instance.id_ressource_liee
 
@@ -41,7 +41,7 @@ def _find_or_create_ressource(instance):
         nom = (instance.designation_normalisee or instance.designation_brute or "").strip()
         type_detecte = instance.type_detecte
         if nom and type_detecte in ("consommable", "bien_inventaire"):
-            type_article = instance.id_categorie_suggeree
+            type_article = instance.id_type_suggeree
             if not type_article:
                 type_article = TypeArticle.objects.filter(nom_categorie=type_detecte).first()
             if type_article:
@@ -49,7 +49,7 @@ def _find_or_create_ressource(instance):
                     designation=nom,
                     id_type=type_article,
                     id_sous_categorie=instance.id_sous_categorie_suggeree,
-                    unite_mesure=instance.unite or "unité",
+                    unite_mesure=normalize_unite_mesure(instance.unite),
                 )
                 StagingItem.objects.filter(pk=instance.pk).update(id_ressource_liee=ressource)
 
@@ -60,7 +60,8 @@ def _integrate_item_into_stock(staging_item, ressource, marche):
     """Create/update LotArticle and Stock/InstanceRessource for one staging item."""
     from django.contrib.contenttypes.models import ContentType
 
-    from apps.resources.models import InstanceRessource, MouvementStock, Stock
+    from apps.resources.models import InstanceRessource, MouvementStock
+    from apps.resources.services import increment_stock
     from apps.resources.signals import _notify_gestionnaires_for_stock
 
     lot, created = LotArticle.objects.get_or_create(
@@ -81,18 +82,14 @@ def _integrate_item_into_stock(staging_item, ressource, marche):
     lot_ct = ContentType.objects.get_for_model(LotArticle)
 
     if ressource.is_consommable:
-        stock, _ = Stock.objects.get_or_create(id_ressource=ressource)
-        Stock.objects.filter(pk=stock.pk).update(
-            quantite_disponible=F("quantite_disponible") + staging_item.quantite
-        )
-        _notify_gestionnaires_for_stock(stock.pk)
-        MouvementStock.objects.create(
-            type_mouvement="entree",
+        increment_stock(
+            ressource_id=ressource.pk,
             quantite=staging_item.quantite,
-            id_ressource=ressource,
-            content_type=lot_ct,
-            object_id=lot.pk,
+            utilisateur=None,
+            source_object=staging_item,
         )
+        stock = ressource.stock
+        _notify_gestionnaires_for_stock(stock.pk)
     else:
         from datetime import date as _date  # noqa: PLC0415
 

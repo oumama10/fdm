@@ -238,25 +238,10 @@ class DashboardView(APIView):
         for _ in range(11):
             start_month = (start_month.replace(day=1) - timedelta(days=1)).replace(day=1)
 
-        cons_alerts = Stock.objects.filter(
+        stock_alerts_count = Stock.objects.filter(
             seuil_alerte__isnull=False,
             quantite_disponible__lte=F("seuil_alerte"),
         ).count()
-        bi_alerts = (
-            Ressource.objects.filter(
-                id_type__nom_categorie="bien_inventaire",
-                seuil_alerte__isnull=False,
-            )
-            .annotate(
-                instances_en_stock=Count(
-                    "instanceressource",
-                    filter=Q(instanceressource__statut="en_stock"),
-                )
-            )
-            .filter(instances_en_stock__lte=F("seuil_alerte"))
-            .count()
-        )
-        stock_alerts_count = cons_alerts + bi_alerts
 
         total_consommables = Stock.objects.aggregate(t=Sum("quantite_disponible"))["t"] or 0
         total_biens = InstanceRessource.objects.filter(statut="en_stock").count()
@@ -271,9 +256,9 @@ class DashboardView(APIView):
         
         total_articles_last_month = total_articles - entrees_ce_mois + sorties_ce_mois
 
-        demandes_en_cours = Demande.objects.filter(statut="en_attente").count()
+        demandes_en_cours = Demande.objects.filter(statut="en_cours").count()
         demandes_en_cours_last_month = Demande.objects.filter(
-            statut="en_attente",
+            statut="en_cours",
             date_demande__date__lt=current_month,
         ).count()
 
@@ -625,7 +610,7 @@ class DashboardSummaryView(APIView):
             id_type__actif=True,
         ).count()
         alertes_actives_count = AlerteDelai.objects.filter(acquitte=False).count()
-        demandes_en_attente_count = Demande.objects.filter(statut="en_attente").count()
+        demandes_en_attente_count = Demande.objects.filter(statut="en_cours").count()
         retours_en_attente_count = RetourMateriel.objects.filter(statut="en_attente").count()
         imports_en_revision_count = ImportExcelBC.objects.filter(
             statut_import="en_revision"

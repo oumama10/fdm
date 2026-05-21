@@ -61,11 +61,10 @@ function availColor(pct) {
 // ── Constants ─────────────────────────────────────────────────────────────
 // Badge display — all possible outcome values
 const STATUT_OPTIONS = [
-  { value: 'en_attente', label: 'En attente',             bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd' },
-  { value: 'en_cours',   label: 'En cours de traitement', bg: '#dbeafe', color: '#1e3a8a', border: '#bfdbfe' },
-  { value: 'partielle',  label: 'Partiellement traitée',  bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
-  { value: 'totale',     label: 'Totalement traitée',     bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
-  { value: 'refusee',    label: 'Refusée',                bg: '#fecaca', color: '#991b1b', border: '#fca5a5' },
+  { value: 'en_cours',    label: 'En cours',    bg: '#dbeafe', color: '#1e3a8a', border: '#bfdbfe' },
+  { value: 'traite',      label: 'Traité',      bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
+  { value: 'en_instance', label: 'En instance', bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
+  { value: 'refuse',      label: 'Refusé',      bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
 ];
 
 
@@ -283,17 +282,13 @@ function BienInventaireBlock({ ligne, selection, onChange, readOnly }) {
 // ── Statut auto-compute ───────────────────────────────────────────────────
 function computeStatutFromSelections(lignes, selections) {
   if (!lignes || lignes.length === 0) return 'en_cours';
-  let totalDemande = 0;
-  let totalServi   = 0;
+  let totalServi = 0;
   for (const ligne of lignes) {
     const lid = _ligneId(ligne);
-    const sel = selections[lid];
-    totalDemande += _qd(ligne);
-    totalServi   += sel?.quantite_accordee ?? 0;
+    totalServi += selections[lid]?.quantite_accordee ?? 0;
   }
   if (totalServi === 0) return 'en_cours';
-  if (totalServi >= totalDemande) return 'totale';
-  return 'partielle';
+  return 'traite';
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────
@@ -346,7 +341,7 @@ export default function DemandeDetailPage() {
   useEffect(() => {
     if (!isEditing || !demande?.lignes) return;
     setSelectedStatut((current) => {
-      if (current === 'refusee') return current;
+      if (current === 'refuse' || current === 'en_instance') return current;
       return computeStatutFromSelections(demande.lignes, selections);
     });
   }, [isEditing, selections, demande?.lignes]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -360,8 +355,6 @@ export default function DemandeDetailPage() {
       setIsEditing(false);
       queryClient.invalidateQueries({ queryKey: ['demandes', 'detail', id] });
       queryClient.invalidateQueries({ queryKey: ['demandes', 'list'] });
-      queryClient.invalidateQueries({ queryKey: ['resources', 'stocks'] });
-      queryClient.invalidateQueries({ queryKey: ['resources', 'instances'] });
       queryClient.invalidateQueries({ queryKey: ['decharge', 'list'] });
     },
   });
@@ -369,9 +362,9 @@ export default function DemandeDetailPage() {
   function handleSave() {
     if (!demande) return;
     let decision;
-    if (selectedStatut === 'refusee')   decision = 'refus';
-    else if (selectedStatut === 'totale') decision = 'total';
-    else                                  decision = 'partiel';
+    if (selectedStatut === 'refuse')        decision = 'refus';
+    else if (selectedStatut === 'en_instance') decision = 'en_instance';
+    else                                       decision = 'total';
 
     const lignesData = (demande.lignes || []).map((ligne) => {
       const lid = _ligneId(ligne);
@@ -417,22 +410,14 @@ export default function DemandeDetailPage() {
     return <div style={{ color: T.red, padding: 24, fontSize: 14 }}>Demande introuvable.</div>;
   }
 
-  const isEditable    = ['en_attente', 'en_cours', 'refusee'].includes(demande.statut);
-  const firstLigne    = (demande.lignes || [])[0];
-  const categorieName = firstLigne?.ressource?.categorieMetierNom
-    ?? firstLigne?.ressource?.categorie_metier_nom
-    ?? firstLigne?.ressource?.categorieNom
-    ?? firstLigne?.ressource?.categorie_nom ?? '—';
-  const sousCatName   = firstLigne?.ressource?.sousCategorieNom
-    ?? firstLigne?.ressource?.sous_categorie_nom ?? '—';
-
+  const isEditable    = ['en_cours', 'en_instance'].includes(demande.statut);
   // Badge always tracks the server value; select tracks the in-flight edit value.
   const displayStatut    = isEditing ? selectedStatut : (demande.statut || 'en_cours');
   const currentStatutOpt = STATUT_OPTIONS.find((o) => o.value === displayStatut) || STATUT_OPTIONS[0];
   const urgenceStyle     = URGENCE_MAP[demande.urgence] || URGENCE_MAP.normal;
   const isPending        = validateMutation.isPending;
   const saveDisabled = !isEditing || isPending || selectedStatut === 'en_cours'
-    || (selectedStatut === 'refusee' && !motifRefus.trim());
+    || (selectedStatut === 'refuse' && !motifRefus.trim());
   const canExpand  = true;
   const dechargeId = createdDechargeId ?? demande.decharge_id ?? demande.dechargeId ?? null;
 
@@ -512,8 +497,6 @@ export default function DemandeDetailPage() {
             value={demande.service?.nomService ?? demande.service?.nom_service} />
           <InfoField label="Bénéficiaire"
             value={demande.beneficiaire ? `${demande.beneficiaire.nom} (${demande.beneficiaire.roleType ?? demande.beneficiaire.role_type ?? ''})` : (demande.beneficiaireNom ?? demande.beneficiaire_nom)} />
-          <InfoField label="Catégorie"      value={categorieName} />
-          <InfoField label="Sous-Catégorie" value={sousCatName} />
         </div>
       </div>
 
@@ -600,13 +583,14 @@ export default function DemandeDetailPage() {
           totalDem += _qd(l);
           totalAcc += selections[_ligneId(l)]?.quantite_accordee ?? 0;
         });
-        const decisionLabel = selectedStatut === 'refusee' ? 'Refus total'
+        const decisionLabel = selectedStatut === 'refuse' ? 'Refus total'
+          : selectedStatut === 'en_instance' ? "En attente d'achat"
           : totalAcc === 0 ? 'Aucune quantité accordée'
-          : totalAcc >= totalDem ? `Accord total (${totalAcc}/${totalDem})`
-          : `Accord partiel (${totalAcc}/${totalDem})`;
-        const decisionColor = selectedStatut === 'refusee' ? T.red
+          : `Accord (${totalAcc}/${totalDem})`;
+        const decisionColor = selectedStatut === 'refuse' ? T.red
+          : selectedStatut === 'en_instance' ? T.orange
           : totalAcc === 0 ? T.textMuted
-          : totalAcc >= totalDem ? T.green : T.orange;
+          : T.green;
         return (
           <div style={{
             ...card,
@@ -651,7 +635,7 @@ export default function DemandeDetailPage() {
                 ))}
               </select>
 
-              {selectedStatut === 'refusee' && (
+              {selectedStatut === 'refuse' && (
                 <div style={{ marginTop: 16 }}>
                   <span style={{ fontSize: 13, fontWeight: 500, color: T.textMuted, display: 'block', marginBottom: 6 }}>
                     Motif du refus *

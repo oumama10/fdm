@@ -128,36 +128,23 @@ export default function DonneesExtraitesDetailPage() {
     return { total, approved, rejected, pending, modified };
   }, [items]);
 
-  function getParentCategorieIds(type) {
-    return new Set(
-      categories
-        .filter((c) => {
-          const ta = c.typeArticle ?? c.type_article;
-          return (ta?.nomCategorie ?? ta?.nom_categorie ?? '') === type;
-        })
-        .map((c) => String(c.idCategorie ?? c.id_categorie))
-    );
-  }
-
-  function getRootSousCatsForRow(itemId) {
+  // Returns Categorie objects for a given type
+  function getCategoriesForRow(itemId) {
     const type = rowDrafts[itemId]?.type_detecte;
     if (!type) return [];
-    const parentCatIds = getParentCategorieIds(type);
-    if (!parentCatIds.size) return [];
-    return allSousCategories.filter((sc) => {
-      const scCatId = String(sc.idCategorie ?? sc.id_categorie ?? '');
-      const scParentId = sc.idParentSousCategorie ?? sc.id_parent_sous_categorie;
-      return parentCatIds.has(scCatId) && !scParentId;
+    return categories.filter((c) => {
+      const ta = c.typeArticle ?? c.type_article;
+      return (ta?.nomCategorie ?? ta?.nom_categorie ?? '') === type;
     });
   }
 
-  function getChildSousCatsForRow(itemId) {
-    const rootId = rowDrafts[itemId]?.id_root_sous_categorie;
-    if (!rootId) return [];
-    return allSousCategories.filter((sc) => {
-      const scParentId = String(sc.idParentSousCategorie ?? sc.id_parent_sous_categorie ?? '');
-      return scParentId === String(rootId);
-    });
+  // Returns SousCategorie objects for the selected Categorie
+  function getSousCategoriesForRow(itemId) {
+    const catId = rowDrafts[itemId]?.id_root_sous_categorie;
+    if (!catId) return [];
+    return allSousCategories.filter((sc) =>
+      String(sc.idCategorie ?? sc.id_categorie) === String(catId)
+    );
   }
 
   function startEdit(item) {
@@ -166,8 +153,8 @@ export default function DonneesExtraitesDetailPage() {
     const sc = scId ? allSousCategories.find(
       (s) => String(s.idSousCategorie ?? s.id_sous_categorie) === scId
     ) : null;
-    const parentId = sc ? String(sc.idParentSousCategorie ?? sc.id_parent_sous_categorie ?? '') : '';
-    const rootId = sc ? (parentId || scId) : '';
+    // Derive the Categorie ID from the SousCategorie's id_categorie FK
+    const catId = sc ? String(sc.idCategorie ?? sc.id_categorie ?? '') : '';
     setEditingRowId(itemId);
     setRowDrafts((prev) => ({
       ...prev,
@@ -175,7 +162,7 @@ export default function DonneesExtraitesDetailPage() {
         designation_normalisee: item.designationNormalisee ?? item.designation_normalisee ?? '',
         quantite: item.quantite ?? 1,
         type_detecte: item.typeDetecte ?? item.type_detecte ?? '',
-        id_root_sous_categorie: rootId,
+        id_root_sous_categorie: catId,
         id_sous_categorie_suggeree: scId,
       },
     }));
@@ -208,37 +195,29 @@ export default function DonneesExtraitesDetailPage() {
         updated.id_sous_categorie_suggeree = '';
       }
       if (key === 'id_root_sous_categorie') {
-        if (current.type_detecte === 'consommable') {
-          updated.id_sous_categorie_suggeree = value;
-        } else {
-          updated.id_sous_categorie_suggeree = '';
-        }
+        updated.id_sous_categorie_suggeree = '';
       }
       return { ...prev, [itemId]: updated };
     });
   }
 
+  // Display label: the parent Categorie name of the saved SousCategorie
   function getCategoryLabel(item) {
     const scId = String(item.idSousCategorieSuggeree ?? item.id_sous_categorie_suggeree ?? '');
     if (!scId) return '—';
     const sc = allSousCategories.find((s) => String(s.idSousCategorie ?? s.id_sous_categorie) === scId);
     if (!sc) return '—';
-    const parentId = String(sc.idParentSousCategorie ?? sc.id_parent_sous_categorie ?? '');
-    if (parentId) {
-      const parent = allSousCategories.find((s) => String(s.idSousCategorie ?? s.id_sous_categorie) === parentId);
-      return parent ? (parent.nomSousCategorie ?? parent.nom_sous_categorie) : '—';
-    }
-    return sc.nomSousCategorie ?? sc.nom_sous_categorie ?? scId;
+    const catId = String(sc.idCategorie ?? sc.id_categorie ?? '');
+    const cat = categories.find((c) => String(c.idCategorie ?? c.id_categorie) === catId);
+    return cat ? (cat.nomCategorie ?? cat.nom_categorie ?? '—') : '—';
   }
 
+  // Display label: the SousCategorie name
   function getSousCategoryLabel(item) {
     const scId = String(item.idSousCategorieSuggeree ?? item.id_sous_categorie_suggeree ?? '');
     if (!scId) return '—';
     const sc = allSousCategories.find((s) => String(s.idSousCategorie ?? s.id_sous_categorie) === scId);
-    if (!sc) return '—';
-    const parentId = sc.idParentSousCategorie ?? sc.id_parent_sous_categorie;
-    if (!parentId) return '—';
-    return sc.nomSousCategorie ?? sc.nom_sous_categorie ?? scId;
+    return sc ? (sc.nomSousCategorie ?? sc.nom_sous_categorie ?? scId) : '—';
   }
 
   function getTypeLabel(item) {
@@ -408,9 +387,9 @@ export default function DonneesExtraitesDetailPage() {
                           disabled={!d.type_detecte}
                         >
                           <option value="">—</option>
-                          {getRootSousCatsForRow(itemId).map((sc) => {
-                            const scId = sc.idSousCategorie ?? sc.id_sous_categorie;
-                            return <option key={scId} value={scId}>{sc.nomSousCategorie ?? sc.nom_sous_categorie}</option>;
+                          {getCategoriesForRow(itemId).map((c) => {
+                            const cId = c.idCategorie ?? c.id_categorie;
+                            return <option key={cId} value={cId}>{c.nomCategorie ?? c.nom_categorie}</option>;
                           })}
                         </select>
                       ) : getCategoryLabel(item)}
@@ -421,10 +400,10 @@ export default function DonneesExtraitesDetailPage() {
                           style={inputStyle}
                           value={d.id_sous_categorie_suggeree || ''}
                           onChange={(e) => updateRowDraft(itemId, 'id_sous_categorie_suggeree', e.target.value)}
-                          disabled={d.type_detecte !== 'bien_inventaire' || !d.id_root_sous_categorie}
+                          disabled={!d.id_root_sous_categorie}
                         >
                           <option value="">—</option>
-                          {getChildSousCatsForRow(itemId).map((sc) => {
+                          {getSousCategoriesForRow(itemId).map((sc) => {
                             const scId = sc.idSousCategorie ?? sc.id_sous_categorie;
                             return <option key={scId} value={scId}>{sc.nomSousCategorie ?? sc.nom_sous_categorie}</option>;
                           })}

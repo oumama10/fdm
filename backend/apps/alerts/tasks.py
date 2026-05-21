@@ -49,7 +49,7 @@ def check_marche_deadlines():
                     user,
                     NotificationType.ALERTE_STOCK,
                     f"Le marché {marche.reference} approche de sa date limite de livraison.",
-                    objet_id=marche.pk,
+                    content_object=marche,
                     lien=f"/gestionnaire/marches/{marche.pk}",
                 )
         elif jours_restants < 0:

@@ -24,6 +24,12 @@ class _FournisseurBriefSerializer(serializers.Serializer):
     telephone = serializers.CharField(required=False, allow_blank=True)
 
 
+class _UtilisateurBriefSerializer(serializers.Serializer):
+    id_utilisateur = serializers.IntegerField()
+    nom_complet = serializers.CharField()
+    email = serializers.EmailField(required=False, allow_blank=True)
+
+
 class _RessourceBriefSerializer(serializers.Serializer):
     """Read-only representation of Ressource for LotArticle nesting."""
 
@@ -70,6 +76,7 @@ class MarcheEtapeSerializer(serializers.ModelSerializer):
 
 class MarcheBCSerializer(serializers.ModelSerializer):
     fournisseur = _FournisseurBriefSerializer(source="id_fournisseur", read_only=True)
+    rejete_par = _UtilisateurBriefSerializer(source="id_rejete_par", read_only=True)
     etapes = MarcheEtapeSerializer(many=True, read_only=True)
     import_excel = serializers.SerializerMethodField()
 
@@ -84,6 +91,9 @@ class MarcheBCSerializer(serializers.ModelSerializer):
             "delai_reception_jours",
             "date_livraison_prevue",
             "statut",
+            "date_rejet",
+            "id_rejete_par",
+            "rejete_par",
             "fichier_cps",
             "id_fournisseur",
             "fournisseur",
@@ -103,6 +113,8 @@ class MarcheBCSerializer(serializers.ModelSerializer):
             "id_marche",
             "date_creation",
             "delai_reception_jours",
+            "date_rejet",
+            "id_rejete_par",
             "etapes",
         ]
 
@@ -269,7 +281,7 @@ class StagingItemSerializer(serializers.ModelSerializer):
             "prix_total_ht",
             "unite",
             "id_import",
-            "id_categorie_suggeree",
+            "id_type_suggeree",
             "id_sous_categorie_suggeree",
             "id_ressource_liee",
             "needs_review",

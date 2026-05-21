@@ -211,6 +211,10 @@ export default function MarcheDetailPage() {
 
   const statut      = marche.statut ?? '';
   const typeAcq     = marche.type_acquisition ?? marche.typeAcquisition ?? '';
+  const getEtapeLabel = (nom) =>
+    nom === 'marche_cree' && typeAcq === 'bon_commande'
+      ? 'Bon de Commande créé'
+      : ETAPE_LABELS[nom] || nom;
   const importExcel = marche.import_excel ?? marche.importExcel ?? null;
   const fournisseur = marche.fournisseur ?? null;
   const isDonation  = typeAcq === 'donation';
@@ -223,6 +227,7 @@ export default function MarcheDetailPage() {
       titre_fichier:          importExcel?.titre_fichier          ?? importExcel?.titreFichier          ?? '',
       reference_document:     importExcel?.reference_document     ?? importExcel?.referenceDocument     ?? '',
       statut:                 statut,
+      motif_rejet:            marche.motif_rejet                  ?? marche.motifRejet                  ?? '',
       date_livraison_prevue:  marche.date_livraison_prevue ?? marche.dateLivraisonPrevue ?? '',
       fournisseur_denomination: importExcel?.fournisseur_denomination ?? importExcel?.fournisseurDenomination
                                 ?? fournisseur?.nom_societe ?? fournisseur?.nomSociete ?? '',
@@ -241,6 +246,7 @@ export default function MarcheDetailPage() {
   function saveInfos(e) {
     e.preventDefault();
     const payload = { statut: infosForm.statut };
+    if (infosForm.statut === 'refuse') payload.motif_rejet = infosForm.motif_rejet;
     if (infosForm.date_livraison_prevue) payload.date_livraison_prevue = infosForm.date_livraison_prevue;
     if (isDonation) {
       payload.nom_donateur       = infosForm.nom_donateur;
@@ -386,12 +392,10 @@ export default function MarcheDetailPage() {
 
       {/* ── Section 2 : Informations générales ── */}
       <section style={sectionStyle}>
-=======
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <h3 style={{ ...sectionTitleStyle, marginBottom: 0 }}>Informations générales</h3>
-          {!isFinanciere && !editInfos && (
+          {!isFinanciere && !editInfos && statut !== 'receptionne_et_stocke' && (
             <button style={btnEdit} onClick={openEditInfos}>✏️ Modifier</button>
->>>>>>> upstream/main
           )}
         </div>
 
@@ -407,10 +411,26 @@ export default function MarcheDetailPage() {
               <input style={{ ...inputStyle, background: '#f8fafc', color: '#94a3b8' }} value={TYPE_LABEL[typeAcq] || typeAcq} disabled />
             </FormRow>
             <FormRow label="Statut">
-              <select style={inputStyle} value={infosForm.statut} onChange={e => setInfosForm(f => ({ ...f, statut: e.target.value }))}>
+              <select
+                style={inputStyle}
+                value={infosForm.statut}
+                onChange={e => setInfosForm(f => ({ ...f, statut: e.target.value, motif_rejet: e.target.value !== 'refuse' ? '' : f.motif_rejet }))}
+              >
                 {STATUT_CHOICES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </FormRow>
+            {infosForm.statut === 'refuse' && (
+              <FormRow label="Motif / Commentaire *">
+                <textarea
+                  required
+                  rows={3}
+                  style={{ ...inputStyle, resize: 'vertical', minHeight: 72, fontFamily: 'inherit', lineHeight: '20px' }}
+                  value={infosForm.motif_rejet}
+                  onChange={e => setInfosForm(f => ({ ...f, motif_rejet: e.target.value }))}
+                  placeholder="Motif du refus…"
+                />
+              </FormRow>
+            )}
             <FormRow label="Date de création">
               <input style={{ ...inputStyle, background: '#f8fafc', color: '#94a3b8' }} value={formatDate(marche.date_creation ?? marche.dateCreation)} disabled />
             </FormRow>
@@ -418,7 +438,7 @@ export default function MarcheDetailPage() {
               <input style={inputStyle} type="date" value={infosForm.date_livraison_prevue} onChange={e => setInfosForm(f => ({ ...f, date_livraison_prevue: e.target.value }))} />
             </FormRow>
             <FormRow label="Délai prévu">
-              <input style={{ ...inputStyle, background: '#f8fafc', color: '#94a3b8' }} value={marche.delai_reception_jours != null ? `${marche.delai_reception_jours} jours` : '—'} disabled />
+              <input style={{ ...inputStyle, background: '#f8fafc', color: '#94a3b8' }} value={(marche.delaiReceptionJours ?? marche.delai_reception_jours) != null ? `${marche.delaiReceptionJours ?? marche.delai_reception_jours} jours` : '—'} disabled />
             </FormRow>
             {!isDonation && (fournisseur || importExcel) && <>
               <FormRow label="Fournisseur">
@@ -469,7 +489,7 @@ export default function MarcheDetailPage() {
             <InfoRow label="Statut" value={<SmallBadge label={STATUT_LABEL[statut] || statut} style={STATUT_STYLE[statut] || {}} />} />
             <InfoRow label="Date de création" value={formatDate(marche.date_creation ?? marche.dateCreation)} />
             <InfoRow label="Date de réception" value={formatDate(dateRec)} />
-            <InfoRow label="Délai prévu" value={marche.delai_reception_jours != null ? `${marche.delai_reception_jours} jours` : '—'} />
+            <InfoRow label="Délai prévu" value={(marche.delaiReceptionJours ?? marche.delai_reception_jours) != null ? `${marche.delaiReceptionJours ?? marche.delai_reception_jours} jours` : '—'} />
             <InfoRow label="Date d'attribution" value={formatDate(marche.date_attribution ?? marche.dateAttribution)} />
             <InfoRow label="Marque" value={marche.marque || '—'} />
             <InfoRow label="Comité de conformité" value={marche.comite_conformite ?? marche.comiteConformite ?? '—'} />
@@ -528,7 +548,7 @@ export default function MarcheDetailPage() {
                   <div style={{ flex: 1, paddingBottom: isLast ? 4 : 18 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
-                        {ETAPE_LABELS[nom] || nom}
+                        {getEtapeLabel(nom)}
                       </span>
                       <span style={{ fontSize: 11, fontWeight: 500, borderRadius: 999, padding: '2px 8px', background: bg, color }}>
                         {label}
@@ -537,7 +557,7 @@ export default function MarcheDetailPage() {
                         <button
                           style={btnNextEtape}
                           disabled={changerEtapeMutation.isPending}
-                          onClick={() => setEtapeModal({ nom_etape: nom, label: ETAPE_LABELS[nom] || nom })}
+                          onClick={() => setEtapeModal({ nom_etape: nom, label: getEtapeLabel(nom) })}
                         >
                           → Passer à cette étape
                         </button>

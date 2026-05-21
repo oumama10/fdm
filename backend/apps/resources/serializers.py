@@ -16,17 +16,17 @@ from .utils import normalize_key, normalize_sous_categorie_name
 class TypeArticleSerializer(serializers.ModelSerializer):
     class Meta:
         model = TypeArticle
-        fields = ["id_categorie", "nom_categorie", "description", "actif"]
-        read_only_fields = ["id_categorie"]
+        fields = ["id_type_article", "nom_categorie", "description", "actif"]
+        read_only_fields = ["id_type_article"]
 
 
 class CategorieSerializer(serializers.ModelSerializer):
     type_article = TypeArticleSerializer(source="id_type", read_only=True)
-    date_mise_a_jour = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Categorie
-        fields = ["id_categorie", "nom_categorie", "description", "actif", "id_type", "type_article", "date_mise_a_jour"]
+        fields = ["id_categorie", "nom_categorie", "description", "actif", "id_type", "type_article", "updated_at"]
 
 
 class SousCategorieSerializer(serializers.ModelSerializer):
@@ -82,12 +82,15 @@ class RessourceSerializer(serializers.ModelSerializer):
     est_en_alerte = serializers.SerializerMethodField()
 
     def get_est_en_alerte(self, obj):
-        if obj.seuil_alerte is None:
+        if not obj.is_consommable:
             return False
-        count = getattr(obj, "instances_en_stock", None)
-        if count is None:
-            count = obj.instanceressource_set.filter(statut="en_stock").count()
-        return count <= obj.seuil_alerte
+        try:
+            stock = obj.stock
+        except Exception:
+            return False
+        if stock.seuil_alerte is None:
+            return False
+        return stock.quantite_disponible <= stock.seuil_alerte
 
     class Meta:
         model = Ressource
@@ -97,7 +100,6 @@ class RessourceSerializer(serializers.ModelSerializer):
             "marque",
             "description",
             "unite_mesure",
-            "seuil_alerte",
             "est_en_alerte",
             "instances_en_stock",
             "id_type",
@@ -125,9 +127,9 @@ class StockSerializer(serializers.ModelSerializer):
             "quantite_reelle",
             "seuil_alerte",
             "est_en_alerte",
-            "date_mise_a_jour",
+            "updated_at",
         ]
-        read_only_fields = ["id_stock", "date_mise_a_jour", "quantite_reelle"]
+        read_only_fields = ["id_stock", "updated_at", "quantite_reelle"]
 
 
 class _EtablissementBriefSerializer(serializers.Serializer):

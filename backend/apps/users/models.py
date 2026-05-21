@@ -3,6 +3,8 @@ from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 
+from apps.core.models import SoftDeleteModel
+
 
 class Role(models.Model):
     ROLE_CHOICES = [
@@ -81,7 +83,7 @@ class Batiment(models.Model):
         return f"{self.nom} ({self.id_etablissement.nom})"
 
 
-class Service(models.Model):
+class Service(SoftDeleteModel):
     TYPE_SERVICE_CHOICES = [
         ("administratif", "administratif"),
         ("chu", "chu"),
@@ -117,7 +119,7 @@ class Service(models.Model):
         return self.nom_service
 
 
-class Beneficiaire(models.Model):
+class Beneficiaire(SoftDeleteModel):
     ROLE_CHOICES = [
         ("chef_service", "Chef de Service"),
         ("fonctionnaire", "Fonctionnaire"),
@@ -213,10 +215,6 @@ class Utilisateur(AbstractBaseUser, PermissionsMixin):
     @property
     def is_financiere(self):
         return self._has_role("service_financiere")
-
-    @property
-    def is_fournisseur(self):
-        return self._has_role("fournisseur")
 
     @property
     def is_admin(self):

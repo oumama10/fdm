@@ -179,7 +179,7 @@ export default function ChefDechargeDetailPage() {
           }}>
             <span style={{ fontSize: 16, color: '#92400e' }}>&#9201;</span>
             <span style={{ fontSize: 13, color: '#92400e', fontWeight: 500 }}>
-              En attente de signature du gestionnaire
+              En attente de signature
             </span>
           </div>
         )}

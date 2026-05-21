@@ -115,7 +115,7 @@ export default function StagingReviewPage() {
       [item.id_staging]: {
         designation_normalisee: item.designation_normalisee || '',
         quantite: item.quantite,
-        id_categorie_suggeree: item.id_categorie_suggeree || '',
+        id_type_suggeree: item.id_type_suggeree || '',
         id_ressource_liee: item.id_ressource_liee || null,
       },
     }));
@@ -223,7 +223,7 @@ export default function StagingReviewPage() {
                     <td style={tdStyle}>{item.designation_normalisee || '—'}</td>
                     <td style={tdStyle}>{item.quantite}</td>
                     <td style={tdStyle}>
-                      {categories.find((cat) => cat.id_categorie === item.id_categorie_suggeree)?.nom_categorie || '—'}
+                      {categories.find((cat) => cat.id_type_article === item.id_type_suggeree)?.nom_categorie || '—'}
                     </td>
                     <td style={tdStyle}>
                       {hasLinkedResource ? (
@@ -297,16 +297,16 @@ export default function StagingReviewPage() {
                   Catégorie suggérée
                   <select
                     style={inputStyle}
-                    value={draft.id_categorie_suggeree ?? item.id_categorie_suggeree ?? ''}
+                    value={draft.id_type_suggeree ?? item.id_type_suggeree ?? ''}
                     onChange={(e) =>
                       updateDraft(item.id_staging, {
-                        id_categorie_suggeree: e.target.value ? Number(e.target.value) : null,
+                        id_type_suggeree: e.target.value ? Number(e.target.value) : null,
                       })
                     }
                   >
                     <option value="">—</option>
                     {categories.map((cat) => (
-                      <option key={cat.id_categorie} value={cat.id_categorie}>
+                      <option key={cat.id_type_article} value={cat.id_type_article}>
                         {cat.nom_categorie}
                       </option>
                     ))}

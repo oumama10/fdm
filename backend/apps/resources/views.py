@@ -173,8 +173,19 @@ class RessourceViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         ressource = self.get_object()
-        ressource.seuil_alerte = val
-        ressource.save(update_fields=["seuil_alerte"])
+        if not ressource.is_consommable:
+            return Response(
+                {"detail": "Le seuil d'alerte ne s'applique qu'aux ressources consommables."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        stock = Stock.objects.filter(id_ressource=ressource).first()
+        if stock is None:
+            return Response(
+                {"detail": "Aucun stock trouvé pour cette ressource."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        stock.seuil_alerte = val
+        stock.save(update_fields=["seuil_alerte"])
         return Response(RessourceSerializer(self.get_queryset().get(pk=ressource.pk)).data)
 
 
@@ -382,25 +393,10 @@ def stock_summary(request):
         quantite_disponible__lte=F("seuil_alerte"),
     ).count()
 
-    bi_alerts = (
-        Ressource.objects.filter(
-            id_type__nom_categorie="bien_inventaire",
-            seuil_alerte__isnull=False,
-        )
-        .annotate(
-            instances_en_stock=Count(
-                "instanceressource",
-                filter=Q(instanceressource__statut="en_stock"),
-            )
-        )
-        .filter(instances_en_stock__lte=F("seuil_alerte"))
-        .count()
-    )
-
     return Response(
         {
             "total_consommables": total_consommables,
             "total_biens_inventaire": total_instances,
-            "alertes_stock": cons_alerts + bi_alerts,
+            "alertes_stock": cons_alerts,
         }
     )

@@ -96,7 +96,7 @@ export default function PersonnelPage() {
     e.preventDefault();
     setFormError('');
     if (!nom.trim()) { setFormError('Le nom est requis.'); return; }
-    const payload = { nom: nom.trim(), role_type: roleType };
+    const payload = { nom: nom.trim(), role_type: roleType, id_service: serviceId };
     if (editItem) {
       const id = editItem.idBeneficiaire ?? editItem.id_beneficiaire;
       updateMut.mutate({ id, data: payload });

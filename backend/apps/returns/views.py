@@ -87,7 +87,7 @@ class RetourMaterielViewSet(viewsets.ModelViewSet):
                     gestionnaire,
                     NotificationType.RETOUR_ENREGISTRE,
                     f"{nom} a enregistré un retour de '{designation}'.",
-                    objet_id=retour.pk,
+                    content_object=retour,
                     lien=f"/gestionnaire/retours/{retour.pk}/",
                 )
         except Exception:

@@ -63,14 +63,13 @@ def _notify_gestionnaires(msg_titre: str, msg_body: str, ref_obj=None) -> None:
         if not gestionnaires:
             return
 
-        obj_id = ref_obj.pk if ref_obj is not None else None
         for gestionnaire in gestionnaires:
             create_notification(
                 gestionnaire,
                 NotificationType.DEMANDE_SOUMISE,
                 msg_body,
-                objet_id=obj_id,
-                lien=f"/gestionnaire/decharges/{obj_id}/" if obj_id is not None else None,
+                content_object=ref_obj,
+                lien=f"/gestionnaire/decharges/{ref_obj.pk}/" if ref_obj is not None else None,
             )
     except Exception:
         logger.exception(
@@ -122,13 +121,29 @@ def _build_pdf_bytes(decharge, lignes=None) -> bytes:
     cons_lignes    = [l for l in lignes if l.type_ligne == "consommable"]
     is_consommable = is_consommable_decharge(lignes)
 
+    _PERSONNEL_ROLES = frozenset(
+        {"fonctionnaire", "secretariat", "prof", "chef_service", "personnel"}
+    )
+
     demande = decharge.id_demande
     affectation = ""
     if demande:
-        if demande.id_service:
-            affectation = demande.id_service.nom_service
-        elif getattr(demande, "beneficiaire_nom", None):
-            affectation = demande.beneficiaire_nom
+        service_nom = (
+            demande.id_service.nom_service.upper()
+            if demande.id_service
+            else ""
+        )
+        benef = demande.id_beneficiaire
+        if benef:
+            role = benef.role_type or ""
+            if role == "salle_de_cours":
+                affectation = f"{service_nom}<br/>SALLE DE COURS"
+            elif role in _PERSONNEL_ROLES:
+                affectation = f"{service_nom}<br/>Personnel {benef.nom}"
+            else:
+                affectation = service_nom
+        else:
+            affectation = service_nom
 
     date_str = decharge.date_generation.strftime("%d/%m/%Y")
 
@@ -222,7 +237,7 @@ def _build_pdf_bytes(decharge, lignes=None) -> bytes:
         ]
         n = len(rows_data)
         for i, row in enumerate(rows_data):
-            aff = Paragraph(affectation.upper(), af_s) if i == 0 else Paragraph("", td_s)
+            aff = Paragraph(affectation, af_s) if i == 0 else Paragraph("", td_s)
             table_data.append([
                 Paragraph(row["designation"],   td_s),
                 Paragraph(str(row["quantite"]), tc_s),
@@ -241,7 +256,7 @@ def _build_pdf_bytes(decharge, lignes=None) -> bytes:
         rows_data = group_lignes_by_ressource(bi_lignes)
         n = len(rows_data)
         for i, row in enumerate(rows_data):
-            aff = Paragraph(affectation.upper(), af_s) if i == 0 else Paragraph("", td_s)
+            aff = Paragraph(affectation, af_s) if i == 0 else Paragraph("", td_s)
             table_data.append([
                 Paragraph(row["designation"],           td_s),
                 Paragraph(row["numero_inventaire"],     tc_s),
@@ -328,6 +343,7 @@ def generate_decharge_pdf(self, decharge_id: int) -> None:
                 Decharge.objects.select_related(
                     "id_demande__id_service",
                     "id_demande__id_chef_demandeur",
+                    "id_demande__id_beneficiaire",
                     "id_livre_a",
                 )
                 .prefetch_related(
@@ -376,7 +392,7 @@ def generate_decharge_pdf(self, decharge_id: int) -> None:
                 chef,
                 NotificationType.DECHARGE_GENEREE,
                 f"La décharge {decharge.numero_decharge} est disponible.",
-                objet_id=decharge_id,
+                content_object=decharge,
                 lien=f"/gestionnaire/decharges/{decharge_id}/",
             )
 

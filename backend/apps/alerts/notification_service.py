@@ -22,20 +22,32 @@ def create_notification(
     notification_type,
     message,
     lien=None,
-    objet_id=None,
+    content_object=None,
     window_minutes=None,
 ):
     """
     Create a notification, skipping if an identical one was already sent
-    within *window_minutes* (same destinataire + type + objet_id).
+    within *window_minutes* (same destinataire + type + content_type + objet_id).
+
+    Pass *content_object* as the related model instance; content_type and
+    objet_id are derived from it automatically.
 
     Returns the Notification instance, or None if deduplicated.
     """
+    from django.contrib.contenttypes.models import ContentType  # noqa: PLC0415
+
+    content_type = None
+    objet_id = None
+    if content_object is not None:
+        content_type = ContentType.objects.get_for_model(content_object)
+        objet_id = content_object.pk
+
     window_minutes = _get_window_minutes(notification_type, window_minutes)
 
     already_exists = Notification.objects.filter(
         destinataire=destinataire,
         type=notification_type,
+        content_type=content_type,
         objet_id=objet_id,
         created_at__gte=now() - timedelta(minutes=window_minutes),
     ).exists()
@@ -53,5 +65,6 @@ def create_notification(
         niveau=niveau,
         message=message,
         lien=lien,
+        content_type=content_type,
         objet_id=objet_id,
     )

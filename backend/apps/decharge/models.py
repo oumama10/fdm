@@ -1,12 +1,27 @@
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
+
+from apps.core.models import TimestampedModel
 from django.db.models import Q
 from django.utils import timezone
 
 
-class Decharge(models.Model):
+class Decharge(TimestampedModel):
+    STATUT_CHOICES = [
+        ("generee", "Générée"),
+        ("en_attente_signature", "En attente de signature"),
+        ("signee", "Signée"),
+        ("livree", "Livrée"),
+    ]
+
     id_decharge = models.AutoField(primary_key=True)
     numero_decharge = models.CharField(max_length=50, unique=True)
+    statut = models.CharField(
+        max_length=30,
+        choices=STATUT_CHOICES,
+        default="generee",
+        db_index=True,
+    )
     date_generation = models.DateTimeField(auto_now_add=True)
     date_livraison = models.DateField(null=True, blank=True)
     fichier_pdf = models.FileField(upload_to="decharges/pdf/", null=True, blank=True)
@@ -49,19 +64,23 @@ class Decharge(models.Model):
         if not self.numero_decharge:
             current_year = timezone.localdate().year
             prefix = f"DCH-{current_year}-"
-            last_decharge = (
-                Decharge.objects.filter(numero_decharge__startswith=prefix)
-                .order_by("-numero_decharge")
-                .first()
-            )
-            next_sequence = 1
-            if last_decharge:
-                next_sequence = int(last_decharge.numero_decharge.split("-")[-1]) + 1
-            self.numero_decharge = f"{prefix}{next_sequence:04d}"
-        super().save(*args, **kwargs)
+            with transaction.atomic():
+                last_decharge = (
+                    Decharge.objects.select_for_update()
+                    .filter(numero_decharge__startswith=prefix)
+                    .order_by("-numero_decharge")
+                    .first()
+                )
+                next_sequence = 1
+                if last_decharge:
+                    next_sequence = int(last_decharge.numero_decharge.split("-")[-1]) + 1
+                self.numero_decharge = f"{prefix}{next_sequence:04d}"
+                super().save(*args, **kwargs)
+        else:
+            super().save(*args, **kwargs)
 
 
-class LigneDecharge(models.Model):
+class LigneDecharge(TimestampedModel):
     TYPE_LIGNE_CHOICES = [
         ("bien_inventaire", "bien_inventaire"),
         ("consommable", "consommable"),
@@ -112,7 +131,7 @@ class LigneDecharge(models.Model):
             )
 
 
-class SignatureDecharge(models.Model):
+class SignatureDecharge(TimestampedModel):
     STATUT_CHOICES = [
         ("non_signe", "non_signe"),
         ("signe", "signe"),

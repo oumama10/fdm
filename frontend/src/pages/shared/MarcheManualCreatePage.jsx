@@ -32,8 +32,8 @@ const DEFAULT_LIGNE = {
   numero_lot: 1,
   type_produit: '',
   n_inventaire: '',
-  id_categorie_metier: '', // top-level SousCategorie (real business category)
-  id_sous_categorie: '',   // child SousCategorie (bien_inventaire only)
+  id_categorie: '',      // Categorie ID (filters sous-categories)
+  id_sous_categorie: '', // SousCategorie ID
   observation: '',
 };
 
@@ -153,7 +153,7 @@ export default function MarcheManualCreatePage() {
     !!delaiError ||
     !form.titre_fichier.trim() ||
     form.lignes.length === 0 ||
-    form.lignes.some((l) => !String(l.designation || '').trim() || !l.type_produit || !l.id_categorie_metier) ||
+    form.lignes.some((l) => !String(l.designation || '').trim() || !l.type_produit || !l.id_categorie) ||
     (isDonation && !form.nom_donateur.trim());
 
   function handleSubmit() {
@@ -182,10 +182,9 @@ export default function MarcheManualCreatePage() {
         prix_unitaire_ht:  l.prix_unitaire_ht,
         prix_total_ht:     l.prix_total_ht,
         numero_lot:           l.numero_lot || 1,
-        type_produit:         l.type_produit         || undefined,
-        n_inventaire:         l.n_inventaire         || undefined,
-        id_categorie_metier:  l.id_categorie_metier  || undefined,
-        id_sous_categorie:    l.id_sous_categorie    || undefined,
+        type_produit:      l.type_produit      || undefined,
+        n_inventaire:      l.n_inventaire      || undefined,
+        id_sous_categorie: l.id_sous_categorie || undefined,
         observation:          l.observation          || undefined,
       })),
     });
@@ -341,28 +340,16 @@ export default function MarcheManualCreatePage() {
 function ArticleCard({ index, ligne, updateLigne, updateLigneFields, removeLigne, canDelete, categories, sousCategories }) {
   const isBienInventaire = ligne.type_produit === 'bien_inventaire';
 
-  // Collect all Categorie IDs that belong to the selected type
-  const dbCatIds = new Set(
-    ligne.type_produit
-      ? categories
-          .filter((c) => {
-            const ta = c.typeArticle ?? c.type_article;
-            return (ta?.nomCategorie ?? ta?.nom_categorie ?? '') === ligne.type_produit;
-          })
-          .map((c) => String(c.idCategorie ?? c.id_categorie))
-      : []
-  );
-
-  // Top-level SousCategories filtered by the DB Categories of the selected type
-  const categoriesMetier = sousCategories.filter((s) => {
-    const parentId = s.idParentSousCategorie ?? s.id_parent_sous_categorie;
-    return !parentId && dbCatIds.has(String(s.idCategorie ?? s.id_categorie));
+  // Categorie objects filtered by selected type
+  const filteredCategories = categories.filter((c) => {
+    const ta = c.typeArticle ?? c.type_article;
+    return (ta?.nomCategorie ?? ta?.nom_categorie ?? '') === ligne.type_produit;
   });
 
-  // Child SousCategories of the selected catégorie métier
-  const sousCategsMetier = sousCategories.filter((s) => {
-    const parentId = s.idParentSousCategorie ?? s.id_parent_sous_categorie;
-    return String(parentId) === String(ligne.id_categorie_metier);
+  // SousCategorie objects filtered by selected Categorie
+  const filteredSousCategories = sousCategories.filter((s) => {
+    const catId = s.idCategorie ?? s.id_categorie;
+    return String(catId) === String(ligne.id_categorie);
   });
 
   return (
@@ -401,7 +388,7 @@ function ArticleCard({ index, ligne, updateLigne, updateLigneFields, removeLigne
             <select
               style={fieldInputStyle}
               value={ligne.type_produit}
-              onChange={(e) => updateLigneFields(index, { type_produit: e.target.value, id_categorie_metier: '', id_sous_categorie: '' })}
+              onChange={(e) => updateLigneFields(index, { type_produit: e.target.value, id_categorie: '', id_sous_categorie: '' })}
             >
               <option value="">Sélectionner...</option>
               <option value="consommable">Consommable</option>
@@ -426,41 +413,39 @@ function ArticleCard({ index, ligne, updateLigne, updateLigneFields, removeLigne
           </Field>
         </div>
 
-        {/* Catégorie — top-level SousCategorie filtered by type */}
+        {/* Catégorie — Categorie objects filtered by selected type */}
         <Field label="Catégorie" required>
           <select
             style={{ ...fieldInputStyle, color: !ligne.type_produit ? C.textMuted : undefined }}
-            value={ligne.id_categorie_metier}
-            onChange={(e) => updateLigneFields(index, { id_categorie_metier: e.target.value, id_sous_categorie: '' })}
+            value={ligne.id_categorie}
+            onChange={(e) => updateLigneFields(index, { id_categorie: e.target.value, id_sous_categorie: '' })}
             disabled={!ligne.type_produit}
           >
             <option value="">Sélectionner...</option>
-            {categoriesMetier.map((s) => {
+            {filteredCategories.map((c) => {
+              const id  = c.idCategorie ?? c.id_categorie;
+              const nom = c.nomCategorie ?? c.nom_categorie;
+              return <option key={id} value={id}>{nom}</option>;
+            })}
+          </select>
+        </Field>
+
+        {/* Sous-catégorie — SousCategorie objects filtered by selected Categorie */}
+        <Field label="Sous-catégorie">
+          <select
+            style={{ ...fieldInputStyle, color: !ligne.id_categorie ? C.textMuted : undefined }}
+            value={ligne.id_sous_categorie}
+            onChange={(e) => updateLigne(index, 'id_sous_categorie', e.target.value)}
+            disabled={!ligne.id_categorie}
+          >
+            <option value="">— Aucune —</option>
+            {filteredSousCategories.map((s) => {
               const id  = s.idSousCategorie ?? s.id_sous_categorie;
               const nom = s.nomSousCategorie ?? s.nom_sous_categorie;
               return <option key={id} value={id}>{nom}</option>;
             })}
           </select>
         </Field>
-
-        {/* Sous-catégorie — child SousCategorie, only for bien_inventaire */}
-        {isBienInventaire && (
-          <Field label="Sous-catégorie">
-            <select
-              style={{ ...fieldInputStyle, color: !ligne.id_categorie_metier ? C.textMuted : undefined }}
-              value={ligne.id_sous_categorie}
-              onChange={(e) => updateLigne(index, 'id_sous_categorie', e.target.value)}
-              disabled={!ligne.id_categorie_metier}
-            >
-              <option value="">Sélectionner...</option>
-              {sousCategsMetier.map((s) => {
-                const id  = s.idSousCategorie ?? s.id_sous_categorie;
-                const nom = s.nomSousCategorie ?? s.nom_sous_categorie;
-                return <option key={id} value={id}>{nom}</option>;
-              })}
-            </select>
-          </Field>
-        )}
 
         {/* Qté / Unité / PU HT / PT HT — 4 cols */}
         <div style={row4ColStyle}>

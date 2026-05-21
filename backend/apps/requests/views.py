@@ -124,7 +124,7 @@ class DemandeViewSet(viewsets.ModelViewSet):
                 demande.id_chef_demandeur,
                 notification_type,
                 message,
-                objet_id=demande.pk,
+                content_object=demande,
                 lien=f"/chef/demandes/{demande.pk}/",
             )
         except Exception:
@@ -145,7 +145,7 @@ class DemandeViewSet(viewsets.ModelViewSet):
                     gestionnaire,
                     notification_type,
                     message,
-                    objet_id=demande.pk,
+                    content_object=demande,
                     lien=f"/gestionnaire/demandes/{demande.pk}/",
                 )
         except Exception:
@@ -164,7 +164,7 @@ class DemandeViewSet(viewsets.ModelViewSet):
         demande = self.get_object()
 
         # Guard 1: only process actionable statuts
-        if demande.statut not in ("en_attente", "refusee"):
+        if demande.statut not in ("en_cours", "en_instance"):
             return Response(
                 {"detail": f"Impossible de traiter une demande au statut « {demande.statut} »."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -178,9 +178,9 @@ class DemandeViewSet(viewsets.ModelViewSet):
             )
 
         decision = request.data.get("decision", "")
-        if decision not in ("total", "partiel", "refus"):
+        if decision not in ("total", "partiel", "refus", "en_instance"):
             return Response(
-                {"detail": "Le champ 'decision' est requis : 'total', 'partiel' ou 'refus'."},
+                {"detail": "Le champ 'decision' est requis : 'total', 'partiel', 'refus' ou 'en_instance'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -189,7 +189,7 @@ class DemandeViewSet(viewsets.ModelViewSet):
             commentaire = request.data.get("commentaire_validation", "")
             motif_refus = request.data.get("motif_refus", commentaire)
 
-            demande.statut = "refusee"
+            demande.statut = "refuse"
             demande.commentaire_validation = commentaire
             demande.motif_refus = motif_refus
             demande.id_valide_par = request.user
@@ -207,6 +207,14 @@ class DemandeViewSet(viewsets.ModelViewSet):
                 + (f" Motif : {commentaire}" if commentaire else ""),
             )
 
+            return Response(DemandeSerializer(demande).data, status=status.HTTP_200_OK)
+
+        # ── CAS EN_INSTANCE ──────────────────────────────────────────────────
+        if decision == "en_instance":
+            demande.statut = "en_instance"
+            demande.id_valide_par = request.user
+            demande.date_validation = timezone.now()
+            demande.save(update_fields=["statut", "id_valide_par_id", "date_validation"])
             return Response(DemandeSerializer(demande).data, status=status.HTTP_200_OK)
 
         # ── CAS TOTAL / PARTIEL ──────────────────────────────────────────────
@@ -270,7 +278,7 @@ class DemandeViewSet(viewsets.ModelViewSet):
                     )
 
             # Step 2 — set statut from the explicit decision
-            new_statut = "totale" if decision == "total" else "partielle"
+            new_statut = "traite"
 
             demande.statut = new_statut
             demande.id_valide_par = request.user
@@ -328,29 +336,33 @@ class DemandeViewSet(viewsets.ModelViewSet):
             from django.db.models import F                              # noqa: PLC0415
             from django.utils.timezone import now as _now              # noqa: PLC0415
             from apps.resources.models import InstanceRessource, MouvementStock, Stock  # noqa: PLC0415
+            from apps.resources.services import StockInsuffisantError, decrement_stock  # noqa: PLC0415
             from apps.resources.signals import _notify_gestionnaires_for_stock  # noqa: PLC0415
 
             ligne_ct = ContentType.objects.get_for_model(LigneDecharge)
 
             for dl in decharge_lignes:
                 if dl.type_ligne == "consommable" and dl.quantite > 0:
-                    # Decrement disponible AND increment reservee atomically.
-                    # disponible tracks real physical stock; reservee tracks what
-                    # is engaged but not yet physically delivered (released at signature).
+                    try:
+                        decrement_stock(
+                            ressource_id=dl.id_ressource_id,
+                            quantite=dl.quantite,
+                            utilisateur=request.user,
+                            source_object=dl,
+                        )
+                    except StockInsuffisantError:
+                        decharge.delete()
+                        return Response(
+                            {"detail": f"Stock insuffisant pour la ressource {dl.id_ressource.designation}."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
                     Stock.objects.filter(id_ressource=dl.id_ressource).update(
-                        quantite_disponible=F("quantite_disponible") - dl.quantite,
                         quantite_reservee=F("quantite_reservee") + dl.quantite,
                     )
                     stock = Stock.objects.filter(id_ressource=dl.id_ressource).first()
                     if stock:
                         _notify_gestionnaires_for_stock(stock.pk)
-                    MouvementStock.objects.create(
-                        type_mouvement="sortie",
-                        quantite=dl.quantite,
-                        id_ressource=dl.id_ressource,
-                        content_type=ligne_ct,
-                        object_id=dl.pk,
-                    )
 
                 elif dl.type_ligne == "bien_inventaire" and dl.id_instance_ressource_id:
                     svc = demande.id_service
@@ -383,11 +395,12 @@ class DemandeViewSet(viewsets.ModelViewSet):
                 statut="non_signe",
             )
 
-            try:
-                from apps.decharge.tasks import generate_decharge_pdf  # noqa: PLC0415
-                generate_decharge_pdf.delay(decharge.pk)
-            except Exception:
-                pass
+        # PDF generation outside the transaction so the task sees committed data
+        try:
+            from apps.decharge.tasks import generate_decharge_pdf  # noqa: PLC0415
+            generate_decharge_pdf.delay(decharge.pk)
+        except Exception:
+            pass
 
         # Notification (outside the atomic block)
         try:
@@ -399,7 +412,7 @@ class DemandeViewSet(viewsets.ModelViewSet):
                 NotificationType.DECHARGE_GENEREE,
                 f"Votre demande #{demande.id_demande} a été traitée ({new_statut}) — "
                 f"décharge {decharge.numero_decharge} générée.",
-                objet_id=decharge.pk,
+                content_object=decharge,
                 lien=f"/chef/decharges/{decharge.pk}/",
             )
         except Exception:

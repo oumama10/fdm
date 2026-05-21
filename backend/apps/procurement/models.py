@@ -2,10 +2,12 @@ from datetime import timedelta
 
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+
+from apps.core.models import SoftDeleteModel, TimestampedModel
 from django.utils import timezone
 
 
-class MarcheBC(models.Model):
+class MarcheBC(SoftDeleteModel):
     TYPE_ACQUISITION_CHOICES = [
         ("marche", "marche"),
         ("bon_commande", "bon_commande"),
@@ -44,6 +46,14 @@ class MarcheBC(models.Model):
         db_index=True,
     )
     motif_rejet = models.TextField(blank=True, default="")
+    date_rejet = models.DateField(null=True, blank=True)
+    id_rejete_par = models.ForeignKey(
+        "users.Utilisateur",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="marches_rejetes",
+    )
     fichier_cps = models.FileField(upload_to="marches/cps/", blank=True, null=True)
     type_donateur = models.CharField(max_length=50, blank=True, default="")
     nom_donateur = models.CharField(max_length=255, blank=True, default="")
@@ -69,17 +79,44 @@ class MarcheBC(models.Model):
     def __str__(self):
         return self.reference
 
+    # Fields whose change should trigger date_livraison_prevue recalculation.
+    _DELIVERY_DATE_TRIGGERS = {"date_attribution", "delai_reception_jours", "type_acquisition"}
+
     def save(self, *args, **kwargs):
         if self.type_acquisition == "marche":
             self.delai_reception_jours = 90
         elif self.type_acquisition == "donation":
             self.delai_reception_jours = 0
         # bon_commande: use the assigned delai_reception_jours (from extraction or manual)
-        # No hardcoded fallback — it stays None if not provided
-        
-        base_date = self.date_attribution or self.date_creation or timezone.localdate()
-        if self.delai_reception_jours is not None:
+
+        is_creation = self.pk is None
+        update_fields = kwargs.get("update_fields")
+
+        if is_creation:
+            recalculate = True
+        elif update_fields is not None:
+            # Partial save — only recalculate if a trigger field is explicitly being written.
+            recalculate = bool(self._DELIVERY_DATE_TRIGGERS & set(update_fields))
+        else:
+            # Full save — compare against the persisted values to avoid spurious writes.
+            try:
+                old = MarcheBC.objects.only("date_attribution", "delai_reception_jours").get(pk=self.pk)
+                recalculate = (
+                    old.date_attribution != self.date_attribution
+                    or old.delai_reception_jours != self.delai_reception_jours
+                )
+            except MarcheBC.DoesNotExist:
+                recalculate = True
+
+        if recalculate and self.delai_reception_jours is not None:
+            base_date = self.date_attribution or self.date_creation or timezone.localdate()
             self.date_livraison_prevue = base_date + timedelta(days=self.delai_reception_jours)
+            # When update_fields is used, inject the derived fields so the DB row is updated.
+            if update_fields is not None:
+                extra = {"date_livraison_prevue", "delai_reception_jours"} - set(update_fields)
+                if extra:
+                    kwargs["update_fields"] = list(update_fields) + list(extra)
+
         super().save(*args, **kwargs)
         if is_creation:
             MarcheEtape.create_default_etapes(self)
@@ -132,7 +169,6 @@ class MarcheEtape(models.Model):
     def create_default_etapes(cls, marche):
         default_etapes = [
             (1, "marche_cree"),
-<<<<<<< HEAD
             (2, "contrat_signe"),
             (3, "en_attente_livraison"),
             (4, "livraison_en_cours"),
@@ -260,7 +296,7 @@ class StagingItem(models.Model):
         on_delete=models.CASCADE,
         related_name="staging_items",
     )
-    id_categorie_suggeree = models.ForeignKey(
+    id_type_suggeree = models.ForeignKey(
         "resources.TypeArticle",
         on_delete=models.SET_NULL,
         null=True,
@@ -300,7 +336,7 @@ class LotArticle(models.Model):
     quantite_recue = models.IntegerField(default=0)
     observation = models.TextField(blank=True)
     id_marche = models.ForeignKey(MarcheBC, on_delete=models.CASCADE, related_name="lots")
-    id_ressource = models.ForeignKey("resources.Ressource", on_delete=models.CASCADE)
+    id_ressource = models.ForeignKey("resources.Ressource", on_delete=models.PROTECT)
 
     class Meta:
         unique_together = ("id_marche", "numero_lot")

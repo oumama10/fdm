@@ -44,11 +44,7 @@ class AuditMiddleware:
     def _write_audit_log(user, action, path, ip_address, user_agent):
         JournalAudit.objects.create(
             id_utilisateur=user,
-            type_action=action,
-            table_cible=path[:100],
-            id_enregistrement_cible=0,
-            ancienne_valeur="",
-            nouvelle_valeur="",
+            type_action=f"{action} {path}"[:100],
             adresse_ip=ip_address,
             user_agent=user_agent,
         )

@@ -89,12 +89,22 @@ class Notification(models.Model):
     lien = models.CharField(max_length=500, blank=True, null=True)
     lu = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
     objet_id = models.IntegerField(null=True, blank=True)
+    objet = GenericForeignKey("content_type", "objet_id")
 
     class Meta:
         verbose_name = "notification"
         verbose_name_plural = "notifications"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["destinataire", "lu", "created_at"], name="notif_dest_lu_created_idx"),
+        ]
 
     def __str__(self):
         return f"{self.type} - {self.message[:50]}"
@@ -103,10 +113,16 @@ class Notification(models.Model):
 class JournalAudit(models.Model):
     id_log = models.AutoField(primary_key=True)
     type_action = models.CharField(max_length=100)
-    table_cible = models.CharField(max_length=100)
-    id_enregistrement_cible = models.IntegerField()
-    ancienne_valeur = models.TextField(blank=True)
-    nouvelle_valeur = models.TextField(blank=True)
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    id_enregistrement_cible = models.PositiveIntegerField(null=True, blank=True)
+    objet = GenericForeignKey("content_type", "id_enregistrement_cible")
+    ancienne_valeur = models.JSONField(null=True, blank=True)
+    nouvelle_valeur = models.JSONField(null=True, blank=True)
     date_action = models.DateTimeField(auto_now_add=True)
     adresse_ip = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.CharField(max_length=500, blank=True)
@@ -120,7 +136,12 @@ class JournalAudit(models.Model):
     class Meta:
         verbose_name = "journal d'audit"
         verbose_name_plural = "journaux d'audit"
+        indexes = [
+            models.Index(fields=["content_type", "id_enregistrement_cible"], name="journal_ct_objid_idx"),
+            models.Index(fields=["id_utilisateur", "date_action"], name="journal_user_date_idx"),
+        ]
 
     def __str__(self):
-        return f"{self.type_action} - {self.table_cible} #{self.id_enregistrement_cible}"
+        obj_label = str(self.content_type) if self.content_type else "—"
+        return f"{self.type_action} - {obj_label} #{self.id_enregistrement_cible}"
 

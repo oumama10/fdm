@@ -59,6 +59,7 @@ class RetourMaterielSerializer(serializers.ModelSerializer):
             "service_nom",
             "id_traite_par",
             "traite_par",
+            "id_ligne_decharge_origine",
         ]
         read_only_fields = ["id_retour", "date_retour", "id_retourne_par", "statut", "date_reception"]
 

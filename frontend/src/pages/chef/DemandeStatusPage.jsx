@@ -40,16 +40,16 @@ const STEPS = [
   { label: 'En traitement',    key: 1 },
   { label: 'Validée',          key: 2 },
   { label: 'Décharge générée', key: 3 },
-  { label: 'Scan soumis',      key: 4 },
+  { label: 'Décharge Signé',   key: 4 },
   { label: 'Livraison confirmée', key: 5 },
 ];
 
 function getStepIndex(demande, decharge) {
   if (!demande) return -1;
   if (!decharge) {
-    if (demande.statut === 'totale' || demande.statut === 'partielle') return 2;
-    if (demande.statut === 'en_cours' || demande.statut === 'en_attente') return 1;
-    if (demande.statut === 'refusee') return 1;
+    if (demande.statut === 'traite') return 2;
+    if (demande.statut === 'en_cours' || demande.statut === 'en_instance') return 1;
+    if (demande.statut === 'refuse') return 1;
     return 0;
   }
   const sig = _sig(decharge);
@@ -60,11 +60,10 @@ function getStepIndex(demande, decharge) {
 
 // ── Badges ─────────────────────────────────────────────────────────────────
 const STATUT_MAP = {
-  en_attente: { label: 'En attente',    bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd' },
-  en_cours:   { label: 'En cours',      bg: '#dbeafe', color: '#1e3a8a', border: '#bfdbfe' },
-  partielle:  { label: 'Partiellement traitée', bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
-  totale:     { label: 'Totalement traitée',    bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
-  refusee:    { label: 'Refusée',       bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
+  en_cours:    { label: 'En cours',    bg: '#dbeafe', color: '#1e3a8a', border: '#bfdbfe' },
+  traite:      { label: 'Traité',      bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
+  en_instance: { label: 'En instance', bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
+  refuse:      { label: 'Refusé',      bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
 };
 const URGENCE_MAP = {
   normal: { label: 'Normal', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
@@ -74,7 +73,7 @@ const URGENCE_MAP = {
 const SIG_MAP = {
   non_generee: { label: 'Non générée', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
   en_attente:  { label: 'En attente',  bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
-  signe:       { label: 'Scan soumis', bg: '#dbeafe', color: '#1e3a8a', border: '#bfdbfe' },
+  signe:       { label: 'Décharge Signé', bg: '#dbeafe', color: '#1e3a8a', border: '#bfdbfe' },
   valide:      { label: 'Confirmée',   bg: '#bbf7d0', color: '#14532d', border: '#86efac' },
   rejete:      { label: 'Rejeté',      bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
 };
@@ -161,7 +160,7 @@ export default function DemandeStatusPage() {
 
   const sig        = decharge ? _sig(decharge) : 'non_generee';
   const isValide   = sig === 'valide';
-  const statut     = demande.statut || 'en_attente';
+  const statut     = demande.statut || 'en_cours';
   const urgence    = demande.urgence || 'normal';
   const nom        = demande.numero ?? `DEM-${demande.idDemande ?? demande.id_demande}`;
   const dateD      = demande.dateDemande ?? demande.date_demande;
