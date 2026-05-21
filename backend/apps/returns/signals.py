@@ -12,12 +12,11 @@ def on_retour_decision(sender, instance, **kwargs):
 
     decision = instance.decision
     etat_map = {
-        "hors_service": ("hors_service", "hors_service", "retour"),
-        "en_stock": ("retourne", "en_stock", "retour"),
-        "repare": ("bon_etat", "en_stock", "retour"),
-        "non_repare": ("endommage", "en_maintenance", "retour"),
-        "rebut": ("hors_service", "retire", "rebut"),
-        "reaffecte": (None, "en_stock", "retour"),
+        "hors_service": ("hors_service", "en_maintenance", "retour"),
+        "en_stock":     ("retourne",     "en_stock",       "retour"),
+        "repare":       ("bon_etat",     "en_stock",       "retour"),
+        "debarras":     ("hors_service", "debarras",       "rebut"),
+        "reaffecte":    (None,           "en_stock",       "retour"),
     }
 
     if decision not in etat_map:

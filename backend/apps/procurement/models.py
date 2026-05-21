@@ -251,7 +251,7 @@ class StagingItem(models.Model):
         related_name="staging_items",
     )
     id_categorie_suggeree = models.ForeignKey(
-        "resources.Categorie",
+        "resources.TypeArticle",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

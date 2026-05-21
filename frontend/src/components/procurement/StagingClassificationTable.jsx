@@ -52,21 +52,26 @@ export default function StagingClassificationTable({ importId }) {
   const categories = categoriesQuery.data?.data || [];
   const allSousCategories = sousCategoriesQuery.data?.data || [];
 
-  function getParentCategorieId(type) {
-    const targetName = type === 'consommable' ? 'Consommable' : 'Bien Inventaire';
-    const found = categories.find((c) => (c.nomCategorie ?? c.nom_categorie) === targetName);
-    return found ? String(found.idCategorie ?? found.id_categorie) : '';
+  function getParentCategorieIds(type) {
+    return new Set(
+      categories
+        .filter((c) => {
+          const ta = c.typeArticle ?? c.type_article;
+          return (ta?.nomCategorie ?? ta?.nom_categorie ?? '') === type;
+        })
+        .map((c) => String(c.idCategorie ?? c.id_categorie))
+    );
   }
 
   function getRootSousCatsForRow(itemId) {
     const type = rowDrafts[itemId]?.type_detecte;
     if (!type) return [];
-    const parentCatId = getParentCategorieId(type);
-    if (!parentCatId) return [];
+    const parentCatIds = getParentCategorieIds(type);
+    if (!parentCatIds.size) return [];
     return allSousCategories.filter((sc) => {
       const scCatId = String(sc.idCategorie ?? sc.id_categorie ?? '');
       const scParentId = sc.idParentSousCategorie ?? sc.id_parent_sous_categorie;
-      return scCatId === parentCatId && !scParentId;
+      return parentCatIds.has(scCatId) && !scParentId;
     });
   }
 

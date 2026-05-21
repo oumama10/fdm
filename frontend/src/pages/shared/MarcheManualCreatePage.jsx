@@ -322,18 +322,22 @@ export default function MarcheManualCreatePage() {
 function ArticleCard({ index, ligne, updateLigne, updateLigneFields, removeLigne, canDelete, categories, sousCategories }) {
   const isBienInventaire = ligne.type_produit === 'bien_inventaire';
 
-  // Resolve which DB Categorie ID corresponds to the selected type
-  const dbCatId = (() => {
-    if (!ligne.type_produit) return null;
-    const targetNom = ligne.type_produit === 'consommable' ? 'Consommable' : 'Bien Inventaire';
-    const cat = categories.find((c) => (c.nomCategorie ?? c.nom_categorie) === targetNom);
-    return cat ? String(cat.idCategorie ?? cat.id_categorie) : null;
-  })();
+  // Collect all Categorie IDs that belong to the selected type
+  const dbCatIds = new Set(
+    ligne.type_produit
+      ? categories
+          .filter((c) => {
+            const ta = c.typeArticle ?? c.type_article;
+            return (ta?.nomCategorie ?? ta?.nom_categorie ?? '') === ligne.type_produit;
+          })
+          .map((c) => String(c.idCategorie ?? c.id_categorie))
+      : []
+  );
 
-  // Top-level SousCategories filtered by the DB Categorie of the selected type
+  // Top-level SousCategories filtered by the DB Categories of the selected type
   const categoriesMetier = sousCategories.filter((s) => {
     const parentId = s.idParentSousCategorie ?? s.id_parent_sous_categorie;
-    return !parentId && String(s.idCategorie ?? s.id_categorie) === dbCatId;
+    return !parentId && dbCatIds.has(String(s.idCategorie ?? s.id_categorie));
   });
 
   // Child SousCategories of the selected catégorie métier

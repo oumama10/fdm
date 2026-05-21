@@ -5,7 +5,7 @@ from django.utils.timezone import make_aware
 from rest_framework import permissions, viewsets
 
 from apps.alerts.models import JournalAudit
-from apps.core.permissions import IsAdmin
+from apps.core.permissions import IsAdmin, IsGestionnaireOrAdmin
 
 from .models import Batiment, Beneficiaire, Etablissement, Fournisseur, Role, Service, Utilisateur
 from .serializers import (
@@ -56,7 +56,7 @@ class EtablissementViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Etablissement.objects.all().order_by("nom")
 
 
-class BatimentViewSet(viewsets.ReadOnlyModelViewSet):
+class BatimentViewSet(viewsets.ModelViewSet):
     serializer_class = BatimentSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -75,7 +75,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [permissions.IsAuthenticated()]
-        return [IsAdmin()]
+        return [IsGestionnaireOrAdmin()]
 
     def get_queryset(self):
         qs = Service.objects.select_related("id_batiment__id_etablissement").order_by("nom_service")

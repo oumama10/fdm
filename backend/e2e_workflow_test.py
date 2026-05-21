@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 from openpyxl import Workbook
 
 from apps.users.models import Utilisateur, Role, Service
-from apps.resources.models import Categorie, Ressource, Stock
+from apps.resources.models import TypeArticle, Ressource, Stock
 from apps.procurement.models import MarcheBC, ImportExcelBC, StagingItem
 from apps.procurement.tasks import extract_excel_items
 from apps.alerts.models import Notification
@@ -65,14 +65,14 @@ def setup_data():
     user.set_password("test123")
     user.save()
 
-    cat = Categorie.objects.filter(nom_categorie="Consommable").first()
+    cat = TypeArticle.objects.filter(nom_categorie="consommable").first()
     if cat is None:
-        cat = Categorie.objects.create(
-            nom_categorie="Consommable", description="E2E cat"
+        cat = TypeArticle.objects.create(
+            nom_categorie="consommable", description="E2E cat"
         )
     res, _ = Ressource.objects.get_or_create(
         designation="papier a4",
-        defaults={"id_categorie": cat, "description": "E2E resource", "unite_mesure": "ramette"},
+        defaults={"id_type": cat, "description": "E2E resource", "unite_mesure": "ramette"},
     )
     Stock.objects.get_or_create(
         id_ressource=res,

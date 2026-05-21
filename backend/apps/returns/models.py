@@ -13,8 +13,7 @@ class RetourMateriel(models.Model):
         ("hors_service", "hors_service"),
         ("en_stock", "en_stock"),
         ("repare", "repare"),
-        ("non_repare", "non_repare"),
-        ("rebut", "rebut"),
+        ("debarras", "debarras"),
         ("reaffecte", "reaffecte"),
     ]
     STATUT_CHOICES = [

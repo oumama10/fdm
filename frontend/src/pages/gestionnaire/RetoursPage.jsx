@@ -13,10 +13,9 @@ const T = {
 };
 
 const DECISION_ACTIONS = [
-  { key: 'repare',      label: 'Réparé',     bg: '#16a34a' },
-  { key: 'non_repare',  label: 'Non réparé', bg: '#d97706' },
-  { key: 'rebut',       label: 'Rebut',      bg: '#dc2626' },
-  { key: 'reaffecte',   label: 'Réaffecter', bg: '#0C447C' },
+  { key: 'repare',    label: 'Réparé',    bg: '#16a34a' },
+  { key: 'debarras',  label: 'Débarras',  bg: '#dc2626' },
+  { key: 'reaffecte', label: 'Réaffecter', bg: '#0C447C' },
 ];
 
 const MOTIF_BADGE = {
@@ -26,10 +25,9 @@ const MOTIF_BADGE = {
   autre:      { bg: '#ede9fe', color: '#5b21b6', border: '#c4b5fd' },
 };
 const DECISION_BADGE = {
-  repare:     { bg: '#bbf7d0', color: '#14532d', border: '#86efac', label: 'Réparé' },
-  non_repare: { bg: '#fef3c7', color: '#92400e', border: '#fcd34d', label: 'Non réparé' },
-  rebut:      { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', label: 'Rebut' },
-  reaffecte:  { bg: '#dbeafe', color: '#1e3a8a', border: '#93c5fd', label: 'Réaffecté' },
+  repare:    { bg: '#bbf7d0', color: '#14532d', border: '#86efac', label: 'Réparé' },
+  debarras:  { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', label: 'Débarras' },
+  reaffecte: { bg: '#dbeafe', color: '#1e3a8a', border: '#93c5fd', label: 'Réaffecté' },
 };
 
 function MotifBadge({ value }) {

@@ -88,7 +88,7 @@ KEYWORD_RULES: list[dict] = [
                 "moniteur", "clavier", "souris", "imprimante",
             }
         ),
-        "categorie_nom": "Bien Inventaire",
+        "categorie_nom": "bien_inventaire",
         "type_detecte": "bien_inventaire",
         "sous_categorie": "MATERIEL_INFORMATIQUE",
     },
@@ -99,7 +99,7 @@ KEYWORD_RULES: list[dict] = [
                 "stylo", "crayon", "classeur",
             }
         ),
-        "categorie_nom": "Consommable",
+        "categorie_nom": "consommable",
         "type_detecte": "consommable",
         "sous_categorie": "PAPETERIE",
     },
@@ -109,7 +109,7 @@ KEYWORD_RULES: list[dict] = [
                 "chaise", "bureau", "table", "armoire", "etagere",
             }
         ),
-        "categorie_nom": "Bien Inventaire",
+        "categorie_nom": "bien_inventaire",
         "type_detecte": "bien_inventaire",
         "sous_categorie": "MOBILIER",
     },
@@ -119,7 +119,7 @@ KEYWORD_RULES: list[dict] = [
                 "savon", "gel", "masque", "gant", "desinfectant",
             }
         ),
-        "categorie_nom": "Consommable",
+        "categorie_nom": "consommable",
         "type_detecte": "consommable",
         "sous_categorie": "PRODUITS_HYGIENE",
     },
@@ -129,7 +129,7 @@ KEYWORD_RULES: list[dict] = [
                 "cable", "multiprise", "ampoule", "rallonge",
             }
         ),
-        "categorie_nom": "Consommable",
+        "categorie_nom": "consommable",
         "type_detecte": "consommable",
         "sous_categorie": "ELECTRIQUE",
     },
@@ -139,7 +139,7 @@ KEYWORD_RULES: list[dict] = [
                 "projecteur", "tableau", "microscope",
             }
         ),
-        "categorie_nom": "Bien Inventaire",
+        "categorie_nom": "bien_inventaire",
         "type_detecte": "bien_inventaire",
         "sous_categorie": "MATERIEL_ENSEIGNEMENT",
     },
@@ -189,13 +189,13 @@ def _similarity(a: str, b: str) -> float:
 
 def _lookup_categorie(nom_categorie: str) -> int | None:
     """
-    Return the ``id_categorie`` of the active ``Categorie`` whose
-    ``nom_categorie`` matches *nom_categorie* exactly, or ``None``.
+    Return the ``id_categorie`` PK of the active ``TypeArticle`` whose
+    ``nom_categorie`` matches *nom_categorie* (case-insensitive), or ``None``.
     """
-    from apps.resources.models import Categorie  # noqa: PLC0415
+    from apps.resources.models import TypeArticle  # noqa: PLC0415
 
     return (
-        Categorie.objects.filter(nom_categorie=nom_categorie, actif=True)
+        TypeArticle.objects.filter(nom_categorie=nom_categorie.lower(), actif=True)
         .values_list("id_categorie", flat=True)
         .first()
     )
@@ -257,7 +257,7 @@ def normalize_designation(raw_text: str) -> dict:
     dict
         designation_normalisee  (str)       — cleaned, accent-free text
         type_detecte            (str)       — 'consommable' | 'bien_inventaire' | ''
-        id_categorie_suggeree   (int|None)  — FK to resources.Categorie
+        id_categorie_suggeree   (int|None)  — FK to resources.TypeArticle
         id_ressource_liee       (int|None)  — FK to resources.Ressource
         confiance_ia            (float)     — confidence score 0.0 – 1.0
 

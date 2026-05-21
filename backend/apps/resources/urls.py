@@ -8,10 +8,12 @@ from .views import (
     RessourceViewSet,
     SousCategorieViewSet,
     StockViewSet,
+    TypeArticleViewSet,
     stock_summary,
 )
 
 router = DefaultRouter()
+router.register("types", TypeArticleViewSet, basename="type-article")
 router.register("categories", CategorieViewSet, basename="categorie")
 router.register("sous-categories", SousCategorieViewSet, basename="sous-categorie")
 router.register("ressources", RessourceViewSet, basename="ressource")

@@ -54,8 +54,9 @@ class DemandeViewSet(viewsets.ModelViewSet):
             "id_beneficiaire",
             "id_valide_par",
         ).prefetch_related(
+            "lignes__id_ressource__id_type",
             "lignes__id_ressource__id_categorie",
-            "lignes__id_ressource__id_sous_categorie__id_parent_sous_categorie",
+            "lignes__id_ressource__id_sous_categorie",
         )
 
         user = self.request.user

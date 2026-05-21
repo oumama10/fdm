@@ -29,6 +29,9 @@ class RetourMaterielSerializer(serializers.ModelSerializer):
     retourne_par = _UtilisateurBriefSerializer(
         source="id_retourne_par", read_only=True
     )
+    traite_par = _UtilisateurBriefSerializer(
+        source="id_traite_par", read_only=True
+    )
     service_nom = serializers.SerializerMethodField()
 
     def get_service_nom(self, obj):
@@ -55,6 +58,7 @@ class RetourMaterielSerializer(serializers.ModelSerializer):
             "retourne_par",
             "service_nom",
             "id_traite_par",
+            "traite_par",
         ]
         read_only_fields = ["id_retour", "date_retour", "id_retourne_par", "statut", "date_reception"]
 
@@ -62,11 +66,12 @@ class RetourMaterielSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         user = getattr(request, "user", None)
 
-        if self.instance is None and user and getattr(user, "is_authenticated", False):
-            role = getattr(getattr(user, "id_role", None), "nom_role", None)
+        role = getattr(getattr(user, "id_role", None), "nom_role", None) if user else None
+
+        if role == "chef_service":
             instance_ressource = attrs.get("id_instance_ressource")
 
-            if role == "chef_service":
+            if self.instance is None:
                 if not instance_ressource:
                     raise ValidationError({"id_instance_ressource": "Une instance est requise."})
 
@@ -74,7 +79,8 @@ class RetourMaterielSerializer(serializers.ModelSerializer):
                 if service_id and instance_ressource.id_service_actuel_id != service_id:
                     raise ValidationError({"id_instance_ressource": "L'article doit appartenir à votre service."})
 
-                if attrs.get("decision"):
-                    attrs["decision"] = ""
+            # chef_service cannot write decision or justification_decision
+            attrs.pop("decision", None)
+            attrs.pop("justification_decision", None)
 
         return attrs

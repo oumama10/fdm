@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { getCategories, getSousCategories, getRessources } from '../../api/resources';
 import { createDemande } from '../../api/requests';
-import { getEtablissements, getBatiments, getServices, getBeneficiaires } from '../../api/users';
+import { getEtablissements, getBatiments, getBeneficiaires } from '../../api/users';
 import { useAuthStore } from '../../store/authStore';
 
 // ── Design tokens ─────────────────────────────────────────────────────────
@@ -76,53 +76,44 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
   const [lignes, setLignes]                         = useState([]);
   const [formError, setFormError]                   = useState('');
 
-  // ── Cascading hierarchy state ───────────────────────────────────────────
-  const [selectedEtabId, setSelectedEtabId]           = useState('');
-  const [selectedBatimentId, setSelectedBatimentId]   = useState('');
-  const [selectedServiceId, setSelectedServiceId]     = useState('');
-  const [selectedBenefId, setSelectedBenefId]         = useState('');
+  const [selectedBenefId, setSelectedBenefId] = useState('');
 
   const todayDisplay = useMemo(() => new Date().toLocaleDateString('fr-FR'), []);
 
-  // ── Hierarchy queries ───────────────────────────────────────────────────
+  // ── User's service / batiment / etablissement (read-only, auto-assigned) ─
+  const userSvc        = user?.id_service ?? user?.idService ?? {};
+  const userServiceId  = Number(userSvc?.id_service ?? userSvc?.idService ?? 0);
+  const userServiceName = userSvc?.nom_service ?? userSvc?.nomService ?? '';
+  const userBatimentId = String(userSvc?.id_batiment ?? userSvc?.idBatiment ?? '');
+
+  const allBatQuery = useQuery({
+    queryKey: ['hierarchy', 'batiments', 'all'],
+    queryFn: () => getBatiments(),
+    staleTime: 300_000,
+  });
+  const allBatiments   = allBatQuery.data?.data || [];
+  const userBatiment   = allBatiments.find((b) => String(b.idBatiment ?? b.id_batiment) === userBatimentId);
+  const userBatimentName = userBatiment?.nom ?? '';
+  const userEtabId     = String(userBatiment?.idEtablissement ?? userBatiment?.id_etablissement ?? '');
+
   const etabQuery = useQuery({
     queryKey: ['hierarchy', 'etablissements'],
     queryFn: getEtablissements,
     staleTime: 300_000,
   });
-  const etablissements = etabQuery.data?.data || [];
+  const etablissements   = etabQuery.data?.data || [];
+  const userEtab         = etablissements.find((e) => String(e.idEtablissement ?? e.id_etablissement) === userEtabId);
+  const userEtabName     = userEtab?.nom ?? '';
 
-  const batQuery = useQuery({
-    queryKey: ['hierarchy', 'batiments', selectedEtabId],
-    queryFn: () => getBatiments({ id_etablissement: selectedEtabId }),
-    enabled: Boolean(selectedEtabId),
-    staleTime: 300_000,
-  });
-  const batiments = batQuery.data?.data || [];
-
-  const svcQuery = useQuery({
-    queryKey: ['hierarchy', 'services', selectedBatimentId],
-    queryFn: () => getServices({ id_batiment: selectedBatimentId }),
-    enabled: Boolean(selectedBatimentId),
-    staleTime: 300_000,
-  });
-  const services = svcQuery.data?.data || [];
-
+  // ── Beneficiaires for user's service ────────────────────────────────────
   const benefQuery = useQuery({
-    queryKey: ['hierarchy', 'beneficiaires', selectedServiceId],
-    queryFn: () => getBeneficiaires({ id_service: selectedServiceId }),
-    enabled: Boolean(selectedServiceId),
+    queryKey: ['hierarchy', 'beneficiaires', userServiceId],
+    queryFn: () => getBeneficiaires({ id_service: userServiceId }),
+    enabled: Boolean(userServiceId),
     staleTime: 300_000,
   });
   const beneficiaires = benefQuery.data?.data || [];
 
-  // Helper accessors (camelCase from DRF camel-case renderer)
-  const _eId  = (e) => e.idEtablissement ?? e.id_etablissement;
-  const _eNom = (e) => e.nom;
-  const _bId  = (b) => b.idBatiment ?? b.id_batiment;
-  const _bNom = (b) => b.nom;
-  const _sId  = (s) => s.idService ?? s.id_service;
-  const _sNom = (s) => s.nomService ?? s.nom_service;
   const _benId   = (b) => b.idBeneficiaire ?? b.id_beneficiaire;
   const _benNom  = (b) => b.nom;
   const _benRole = (b) => b.roleType ?? b.role_type;
@@ -141,54 +132,49 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
   const _scNom  = (s) => s.nomSousCategorie ?? s.nom_sous_categorie;
   const _rId    = (r) => r.idRessource    ?? r.id_ressource;
 
-  const parentCategorieId = useMemo(() => {
-    const target = typeAcquisition === 'consommable' ? 'Consommable' : 'Bien Inventaire';
-    const found  = categories.find((c) => _catNom(c) === target);
-    return found ? String(_catId(found)) : '';
-  }, [categories, typeAcquisition]); // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => {
     setCategorieId('');
     setSousCategorieId('');
     setSelectedRessourceId('');
   }, [typeAcquisition]);
 
-  const rootsQuery = useQuery({
-    queryKey: ['resources', 'sous-categories', 'roots', parentCategorieId],
-    queryFn: () => getSousCategories({ id_categorie: parentCategorieId, roots_only: true }),
-    enabled: Boolean(parentCategorieId),
+  // Filter categories client-side by selected type
+  const filteredCategories = useMemo(() => {
+    return categories.filter((c) => {
+      const ta = c.typeArticle ?? c.type_article;
+      const typeNom = ta?.nomCategorie ?? ta?.nom_categorie ?? '';
+      return typeNom === typeAcquisition;
+    });
+  }, [categories, typeAcquisition]);
+
+  // Auto-select first category when filtered list changes
+  useEffect(() => {
+    if (!filteredCategories.length) { setCategorieId(''); return; }
+    const still = filteredCategories.some((c) => String(_catId(c)) === String(categorieId));
+    if (!still) setCategorieId(String(_catId(filteredCategories[0])));
+  }, [filteredCategories]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sous-categories for selected category
+  const sousCatsQuery = useQuery({
+    queryKey: ['resources', 'sous-categories', categorieId],
+    queryFn: () => getSousCategories({ id_categorie: categorieId }),
+    enabled: Boolean(categorieId),
+    staleTime: 30_000,
   });
-  const rootSousCategories = rootsQuery.data?.data || [];
+  const sousCategories = sousCatsQuery.data?.data || [];
 
   useEffect(() => {
-    setSelectedRessourceId('');
     setSousCategorieId('');
-    if (!rootSousCategories.length) { setCategorieId(''); return; }
-    const found = rootSousCategories.some((s) => String(_scId(s)) === String(categorieId));
-    if (!found) setCategorieId(String(_scId(rootSousCategories[0])));
-  }, [rootSousCategories]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const childrenQuery = useQuery({
-    queryKey: ['resources', 'sous-categories', 'children', parentCategorieId, categorieId],
-    queryFn: () => getSousCategories({ id_categorie: parentCategorieId, parent: categorieId }),
-    enabled: typeAcquisition === 'bien_inventaire' && Boolean(parentCategorieId) && Boolean(categorieId),
-  });
-  const childSousCategories = childrenQuery.data?.data || [];
-
-  useEffect(() => {
-    if (typeAcquisition !== 'bien_inventaire') { setSousCategorieId(''); return; }
-    if (!childSousCategories.length) { setSousCategorieId(''); return; }
-    const found = childSousCategories.some((s) => String(_scId(s)) === String(sousCategorieId));
-    if (!found) setSousCategorieId(String(_scId(childSousCategories[0])));
-  }, [typeAcquisition, childSousCategories]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const effectiveSousCategorieId =
-    typeAcquisition === 'consommable' ? categorieId : (sousCategorieId || categorieId);
+    setSelectedRessourceId('');
+  }, [categorieId]);
 
   const ressourcesQuery = useQuery({
-    queryKey: ['resources', 'ressources', parentCategorieId, effectiveSousCategorieId],
-    queryFn: () => getRessources({ id_categorie: parentCategorieId, id_sous_categorie: effectiveSousCategorieId }),
-    enabled: Boolean(parentCategorieId) && Boolean(effectiveSousCategorieId),
+    queryKey: ['resources', 'ressources', categorieId, sousCategorieId],
+    queryFn: () => getRessources({
+      id_categorie: categorieId,
+      ...(sousCategorieId ? { id_sous_categorie: sousCategorieId } : {}),
+    }),
+    enabled: Boolean(categorieId),
   });
   const ressources = ressourcesQuery.data?.data || [];
 
@@ -238,8 +224,7 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
 
   async function handleSubmit() {
     setFormError('');
-    const serviceId = Number(selectedServiceId);
-    if (!serviceId) { setFormError('Veuillez sélectionner un service.'); return; }
+    if (!userServiceId) { setFormError('Votre compte n\'est pas associé à un service.'); return; }
     if (!selectedBenefId) { setFormError('Veuillez sélectionner un bénéficiaire.'); return; }
     if (!lignes.length) { setFormError('Ajoutez au moins une ligne.'); return; }
     const benef = beneficiaires.find((b) => String(_benId(b)) === String(selectedBenefId));
@@ -250,7 +235,7 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
       beneficiaire_nom: benef ? _benNom(benef) : '',
       beneficiaire_detail: '',
       justification,
-      id_service: serviceId,
+      id_service: userServiceId,
       id_beneficiaire: Number(selectedBenefId),
       lignes: lignes.map((l) => ({
         id_ressource: Number(l.id_ressource),
@@ -296,67 +281,27 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
             </div>
           </section>
 
-          {/* Désignation du demandeur — cascading dropdowns */}
+          {/* Désignation du demandeur — auto-assigned from user profile */}
           <section style={sectionCardStyle}>
             <h3 style={sectionTitleStyle}>Désignation du demandeur</h3>
             <div style={row2Style}>
-              <Field label="Établissement" required>
-                <Select
-                  value={selectedEtabId}
-                  onChange={(e) => {
-                    setSelectedEtabId(e.target.value);
-                    setSelectedBatimentId('');
-                    setSelectedServiceId('');
-                    setSelectedBenefId('');
-                  }}
-                >
-                  <option value="">— Choisir —</option>
-                  {etablissements.map((e) => (
-                    <option key={_eId(e)} value={_eId(e)}>{_eNom(e)}</option>
-                  ))}
-                </Select>
+              <Field label="Établissement">
+                <Input value={userEtabName || '—'} readOnly style={{ color: C.textMuted, background: C.bgSubtle, cursor: 'not-allowed' }} />
               </Field>
-              <Field label="Bâtiment" required>
-                <Select
-                  value={selectedBatimentId}
-                  onChange={(e) => {
-                    setSelectedBatimentId(e.target.value);
-                    setSelectedServiceId('');
-                    setSelectedBenefId('');
-                  }}
-                  disabled={!selectedEtabId}
-                  style={{ color: !selectedEtabId ? C.textMuted : undefined }}
-                >
-                  <option value="">— Choisir —</option>
-                  {batiments.map((b) => (
-                    <option key={_bId(b)} value={_bId(b)}>{_bNom(b)}</option>
-                  ))}
-                </Select>
+              <Field label="Bâtiment">
+                <Input value={userBatimentName || '—'} readOnly style={{ color: C.textMuted, background: C.bgSubtle, cursor: 'not-allowed' }} />
               </Field>
             </div>
             <div style={row2Style}>
-              <Field label="Service" required>
-                <Select
-                  value={selectedServiceId}
-                  onChange={(e) => {
-                    setSelectedServiceId(e.target.value);
-                    setSelectedBenefId('');
-                  }}
-                  disabled={!selectedBatimentId}
-                  style={{ color: !selectedBatimentId ? C.textMuted : undefined }}
-                >
-                  <option value="">— Choisir —</option>
-                  {services.map((s) => (
-                    <option key={_sId(s)} value={_sId(s)}>{_sNom(s)}</option>
-                  ))}
-                </Select>
+              <Field label="Service">
+                <Input value={userServiceName || '—'} readOnly style={{ color: C.textMuted, background: C.bgSubtle, cursor: 'not-allowed' }} />
               </Field>
               <Field label="Bénéficiaire" required>
                 <Select
                   value={selectedBenefId}
                   onChange={(e) => setSelectedBenefId(e.target.value)}
-                  disabled={!selectedServiceId}
-                  style={{ color: !selectedServiceId ? C.textMuted : undefined }}
+                  disabled={!userServiceId}
+                  style={{ color: !selectedBenefId ? C.textMuted : undefined }}
                 >
                   <option value="">— Choisir —</option>
                   {beneficiaires.map((b) => (
@@ -399,8 +344,9 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
                   value={categorieId}
                   onChange={(e) => { setCategorieId(e.target.value); setSousCategorieId(''); setSelectedRessourceId(''); }}
                 >
-                  {rootSousCategories.map((s) => (
-                    <option key={_scId(s)} value={_scId(s)}>{_scNom(s)}</option>
+                  <option value="">— Choisir —</option>
+                  {filteredCategories.map((c) => (
+                    <option key={_catId(c)} value={_catId(c)}>{_catNom(c)}</option>
                   ))}
                 </Select>
               </Field>
@@ -412,7 +358,8 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
                     style={{ color: !categorieId ? C.textMuted : undefined }}
                     disabled={!categorieId}
                   >
-                    {childSousCategories.map((s) => (
+                    <option value="">— Toutes —</option>
+                    {sousCategories.map((s) => (
                       <option key={_scId(s)} value={_scId(s)}>{_scNom(s)}</option>
                     ))}
                   </Select>
@@ -449,7 +396,7 @@ export default function NouvelleDemandeModal({ onClose, onCreated }) {
                 + Ajouter
               </button>
             </div>
-            {Boolean(parentCategorieId) && Boolean(effectiveSousCategorieId) && !ressources.length && (
+            {Boolean(categorieId) && !ressources.length && (
               <p style={emptyHintStyle}>Aucun article disponible dans cette catégorie.</p>
             )}
           </section>

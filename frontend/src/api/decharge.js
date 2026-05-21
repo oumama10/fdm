@@ -27,9 +27,12 @@ export const downloadDechargePdf = async (id, type = null) => {
     }
     const url      = URL.createObjectURL(blob);
     const a        = document.createElement('a');
-    const suffix   = type ? `-${type}` : '';
+    const year     = new Date().getFullYear();
+    const filename = type === 'consommable'      ? `Décharge Consommable ${year}.pdf`
+                   : type === 'bien_inventaire'  ? `Décharge Bien Inventaire ${year}.pdf`
+                   :                               `Décharge ${year}.pdf`;
     a.href         = url;
-    a.download     = `decharge-${id}${suffix}.pdf`;
+    a.download     = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -84,8 +87,9 @@ export const downloadDechargeAuto = async (id) => {
         apiClient.get(`/decharge/decharges/${id}/pdf/?type=consommable`, { responseType: 'blob' }),
       ]);
       // Synchronous back-to-back — no await between the two clicks
-      _triggerBlobDownload(resBI.data, `decharge-${id}-biens-inventaire.pdf`);
-      _triggerBlobDownload(resC.data, `decharge-${id}-consommables.pdf`);
+      const year = new Date().getFullYear();
+      _triggerBlobDownload(resBI.data, `Décharge Bien Inventaire ${year}.pdf`);
+      _triggerBlobDownload(resC.data,  `Décharge Consommable ${year}.pdf`);
     } else {
       await downloadDechargePdf(id);
     }

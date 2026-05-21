@@ -20,10 +20,9 @@ const MOTIF_BADGE = {
 };
 
 const DECISION_BADGE = {
-  repare:     { bg: '#bbf7d0', color: '#14532d', border: '#86efac', label: 'Réparé' },
-  non_repare: { bg: '#fef3c7', color: '#92400e', border: '#fcd34d', label: 'Non réparé' },
-  rebut:      { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', label: 'Rebut' },
-  reaffecte:  { bg: '#dbeafe', color: '#1e3a8a', border: '#93c5fd', label: 'Réaffecté' },
+  repare:    { bg: '#bbf7d0', color: '#14532d', border: '#86efac', label: 'Réparé' },
+  debarras:  { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', label: 'Débarras' },
+  reaffecte: { bg: '#dbeafe', color: '#1e3a8a', border: '#93c5fd', label: 'Réaffecté' },
 };
 
 function MotifBadge({ value }) {
@@ -130,7 +129,7 @@ export default function RetoursPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Date', 'Ressource', 'N° inventaire', 'Motif', 'État', 'Observation'].map((h) => (
+                  {['Date', 'Ressource', 'N° inventaire', 'Motif', 'État', 'Décision — Justification', 'Observation'].map((h) => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
@@ -138,7 +137,7 @@ export default function RetoursPage() {
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: '24px 12px', color: T.textMuted, fontSize: 13, textAlign: 'center' }}>
+                    <td colSpan={7} style={{ padding: '24px 12px', color: T.textMuted, fontSize: 13, textAlign: 'center' }}>
                       Aucun retour trouvé.
                     </td>
                   </tr>
@@ -165,6 +164,14 @@ export default function RetoursPage() {
                     </td>
                     <td style={tdStyle}><MotifBadge value={motif} /></td>
                     <td style={tdStyle}><EtatBadge decision={row.decision} /></td>
+                    <td style={{ ...tdStyle, color: T.textMid, maxWidth: 240 }}>
+                      {row.decision && (row.justificationDecision ?? row.justification_decision)
+                        ? <span style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontStyle: 'italic', color: T.textMid }}>
+                            {row.justificationDecision ?? row.justification_decision}
+                          </span>
+                        : <span style={{ color: T.textMuted }}>—</span>
+                      }
+                    </td>
                     <td style={{ ...tdStyle, color: T.textMid, maxWidth: 220 }}>
                       {row.observation
                         ? <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{row.observation}</span>

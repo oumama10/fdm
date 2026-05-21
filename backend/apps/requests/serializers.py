@@ -23,18 +23,18 @@ class _RessourceBriefSerializer(serializers.Serializer):
         return f"ART-{obj.pk:03d}"
 
     def get_categorie_nom(self, obj) -> str:
-        return obj.id_categorie.nom_categorie if obj.id_categorie else ""
+        return obj.id_type.nom_categorie if obj.id_type else ""
 
     def get_sous_categorie_nom(self, obj) -> str:
         sc = obj.id_sous_categorie
         return sc.nom_sous_categorie if sc else ""
 
     def get_categorie_metier_nom(self, obj) -> str:
+        cat = obj.id_categorie
+        if cat:
+            return cat.nom_categorie
         sc = obj.id_sous_categorie
-        if not sc:
-            return ""
-        parent = sc.id_parent_sous_categorie
-        return parent.nom_sous_categorie if parent else sc.nom_sous_categorie
+        return sc.nom_sous_categorie if sc else ""
 
 
 class _UtilisateurBriefSerializer(serializers.Serializer):

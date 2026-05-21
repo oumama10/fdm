@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { createRetour } from '../../api/returns';
+import { createRetour, getRetours } from '../../api/returns';
 import { getInstances } from '../../api/resources';
 import { useAuthStore } from '../../store/authStore';
 
@@ -66,6 +66,12 @@ export default function RetourCreateModal({ onClose, onCreated }) {
     staleTime: 30000,
   });
 
+  const retoursQuery = useQuery({
+    queryKey: ['chef', 'retours'],
+    queryFn:  () => getRetours(),
+    staleTime: 30000,
+  });
+
   const createMutation = useMutation({
     mutationFn: createRetour,
     onSuccess: () => {
@@ -82,10 +88,25 @@ export default function RetourCreateModal({ onClose, onCreated }) {
     },
   });
 
+  const pendingInstanceIds = useMemo(() => {
+    const rows = retoursQuery.data?.data?.results ?? retoursQuery.data?.data ?? [];
+    const ids = new Set();
+    rows.forEach((r) => {
+      if (r.statut === 'en_attente') {
+        const id = r.idInstanceRessource ?? r.id_instance_ressource;
+        if (id != null) ids.add(String(id));
+      }
+    });
+    return ids;
+  }, [retoursQuery.data]);
+
   const instances = useMemo(() => {
     const rows = instancesQuery.data?.data || [];
-    return rows.filter((inst) => inst.statut === 'en_service');
-  }, [instancesQuery.data?.data]);
+    return rows.filter((inst) => {
+      if (inst.statut !== 'en_service') return false;
+      return !pendingInstanceIds.has(String(inst.id_instance ?? inst.idInstance ?? ''));
+    });
+  }, [instancesQuery.data?.data, pendingInstanceIds]);
 
   const selectedInstance = instances.find(
     (inst) => String(inst.id_instance ?? inst.idInstance) === String(selectedId)

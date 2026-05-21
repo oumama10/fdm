@@ -23,10 +23,10 @@ class StockInstantaneView(APIView):
     def get(self, request):
         consommables = (
             Ressource.objects.filter(
-                id_categorie__nom_categorie="Consommable",
-                id_categorie__actif=True,
+                id_type__nom_categorie="consommable",
+                id_type__actif=True,
             )
-            .select_related("id_categorie", "stock")
+            .select_related("id_type", "stock")
             .order_by("designation")
         )
         consommables_data = []
@@ -38,7 +38,7 @@ class StockInstantaneView(APIView):
                 {
                     "id": r.id_ressource,
                     "designation": r.designation,
-                    "categorie": r.id_categorie.nom_categorie,
+                    "categorie": r.id_type.nom_categorie,
                     "quantite_disponible": stock.quantite_disponible,
                     "seuil_alerte": stock.seuil_alerte,
                     "alerte": stock.seuil_alerte is not None and stock.quantite_disponible <= stock.seuil_alerte,
@@ -47,10 +47,10 @@ class StockInstantaneView(APIView):
 
         bien_inventaire = (
             Ressource.objects.filter(
-                id_categorie__nom_categorie="Bien Inventaire",
-                id_categorie__actif=True,
+                id_type__nom_categorie="bien_inventaire",
+                id_type__actif=True,
             )
-            .select_related("id_categorie")
+            .select_related("id_type")
             .annotate(
                 total_instances=Count("instanceressource__id_instance"),
                 nb_en_stock=Count(
@@ -76,7 +76,7 @@ class StockInstantaneView(APIView):
             {
                 "id": r.id_ressource,
                 "designation": r.designation,
-                "categorie": r.id_categorie.nom_categorie,
+                "categorie": r.id_type.nom_categorie,
                 "total_instances": r.total_instances,
                 "en_stock": r.nb_en_stock,
                 "en_service": r.nb_en_service,
@@ -176,13 +176,13 @@ class BilanAnnuelView(APIView):
 
         entrees_par_cat = list(
             mvt_qs.filter(type_mouvement="entree")
-            .values(categorie=F("id_ressource__id_categorie__nom_categorie"))
+            .values(categorie=F("id_ressource__id_type__nom_categorie"))
             .annotate(total=Sum("quantite"))
             .order_by("categorie")
         )
         sorties_par_cat = list(
             mvt_qs.filter(type_mouvement="sortie")
-            .values(categorie=F("id_ressource__id_categorie__nom_categorie"))
+            .values(categorie=F("id_ressource__id_type__nom_categorie"))
             .annotate(total=Sum("quantite"))
             .order_by("categorie")
         )
@@ -244,7 +244,7 @@ class DashboardView(APIView):
         ).count()
         bi_alerts = (
             Ressource.objects.filter(
-                id_categorie__nom_categorie="Bien Inventaire",
+                id_type__nom_categorie="bien_inventaire",
                 seuil_alerte__isnull=False,
             )
             .annotate(
@@ -279,10 +279,10 @@ class DashboardView(APIView):
 
         consommables = (
             Ressource.objects.filter(
-                id_categorie__nom_categorie="Consommable",
-                id_categorie__actif=True,
+                id_type__nom_categorie="consommable",
+                id_type__actif=True,
             )
-            .select_related("id_categorie", "stock")
+            .select_related("id_type", "stock")
             .order_by("designation")
         )
         consommables_count = 0
@@ -303,8 +303,8 @@ class DashboardView(APIView):
             )
 
         bien_inventaire_count = Ressource.objects.filter(
-            id_categorie__nom_categorie="Bien Inventaire",
-            id_categorie__actif=True,
+            id_type__nom_categorie="bien_inventaire",
+            id_type__actif=True,
         ).count()
 
 
@@ -617,12 +617,12 @@ class DashboardSummaryView(APIView):
         from apps.returns.models import RetourMateriel    # noqa: PLC0415
 
         consommables_count = Ressource.objects.filter(
-            id_categorie__nom_categorie="Consommable",
-            id_categorie__actif=True,
+            id_type__nom_categorie="consommable",
+            id_type__actif=True,
         ).count()
         biens_count = Ressource.objects.filter(
-            id_categorie__nom_categorie="Bien Inventaire",
-            id_categorie__actif=True,
+            id_type__nom_categorie="bien_inventaire",
+            id_type__actif=True,
         ).count()
         alertes_actives_count = AlerteDelai.objects.filter(acquitte=False).count()
         demandes_en_attente_count = Demande.objects.filter(statut="en_attente").count()

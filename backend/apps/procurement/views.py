@@ -653,11 +653,11 @@ class ManualImportView(APIView):
         )
         import_obj.save()
 
-        from apps.resources.models import Categorie as CategorieModel  # noqa: PLC0415
+        from apps.resources.models import TypeArticle  # noqa: PLC0415
 
         cat_id_by_type = {
-            "consommable": CategorieModel.objects.filter(nom_categorie="Consommable").values_list("pk", flat=True).first(),
-            "bien_inventaire": CategorieModel.objects.filter(nom_categorie="Bien Inventaire").values_list("pk", flat=True).first(),
+            "consommable": TypeArticle.objects.filter(nom_categorie="consommable").values_list("pk", flat=True).first(),
+            "bien_inventaire": TypeArticle.objects.filter(nom_categorie="bien_inventaire").values_list("pk", flat=True).first(),
         }
 
         def _to_decimal(value):

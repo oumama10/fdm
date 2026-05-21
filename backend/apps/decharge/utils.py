@@ -90,8 +90,8 @@ def get_decharge_title(lignes) -> str:
         for ligne in lignes:
             scat = ligne.id_ressource.id_sous_categorie
             if scat:
-                parent = scat.id_parent_sous_categorie
-                name = parent.nom_sous_categorie if parent else scat.nom_sous_categorie
+                cat = scat.id_categorie
+                name = cat.nom_categorie if cat else scat.nom_sous_categorie
                 categories.add(name)
 
         if len(categories) > 1:

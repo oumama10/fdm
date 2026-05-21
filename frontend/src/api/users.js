@@ -23,4 +23,11 @@ export const getJournalAudit = (params = {}) => apiClient.get('/users/journal-au
 // ── Hierarchy endpoints ───────────────────────────────────────────────────
 export const getEtablissements = () => apiClient.get('/users/etablissements/');
 export const getBatiments = (params = {}) => apiClient.get('/users/batiments/', { params });
+export const createBatiment = (data) => apiClient.post('/users/batiments/', data);
+export const updateBatiment = (id, data) => apiClient.patch(`/users/batiments/${id}/`, data);
+export const deleteBatiment = (id) => apiClient.delete(`/users/batiments/${id}/`);
+export const createServiceJson = (data) => apiClient.post('/users/services/', data);
+export const updateServiceJson = (id, data) => apiClient.patch(`/users/services/${id}/`, data);
 export const getBeneficiaires = (params = {}) => apiClient.get('/users/beneficiaires/', { params });
+export const createBeneficiaire = (data) => apiClient.post('/users/beneficiaires/', data);
+export const deleteBeneficiaire = (id) => apiClient.delete(`/users/beneficiaires/${id}/`);

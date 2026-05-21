@@ -4,16 +4,32 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 
-class Categorie(models.Model):
-    CATEGORIE_CHOICES = [
-        ("Consommable", "Consommable"),
-        ("Bien Inventaire", "Bien Inventaire"),
+class TypeArticle(models.Model):
+    TYPE_CHOICES = [
+        ("consommable", "Consommable"),
+        ("bien_inventaire", "Bien Inventaire"),
     ]
 
     id_categorie = models.AutoField(primary_key=True)
-    nom_categorie = models.CharField(max_length=200, choices=CATEGORIE_CHOICES)
+    nom_categorie = models.CharField(max_length=200, choices=TYPE_CHOICES)
     description = models.TextField(blank=True)
     actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "type article"
+        verbose_name_plural = "types article"
+
+    def __str__(self):
+        return self.get_nom_categorie_display()
+
+
+class Categorie(models.Model):
+    id_categorie = models.AutoField(primary_key=True)
+    nom_categorie = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    actif = models.BooleanField(default=True)
+    id_type = models.ForeignKey(TypeArticle, on_delete=models.CASCADE)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = "categorie"
@@ -28,13 +44,6 @@ class SousCategorie(models.Model):
     nom_sous_categorie = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     id_categorie = models.ForeignKey(Categorie, on_delete=models.CASCADE)
-    id_parent_sous_categorie = models.ForeignKey(
-        "self",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="children",
-    )
 
     class Meta:
         verbose_name = "sous-categorie"
@@ -47,10 +56,17 @@ class SousCategorie(models.Model):
 class Ressource(models.Model):
     id_ressource = models.AutoField(primary_key=True)
     designation = models.CharField(max_length=255)
+    marque = models.CharField(max_length=100, blank=True, default="")
     description = models.TextField(blank=True)
     unite_mesure = models.CharField(max_length=20, default="unité")
     seuil_alerte = models.IntegerField(null=True, blank=True, default=None)
-    id_categorie = models.ForeignKey(Categorie, on_delete=models.CASCADE)
+    id_type = models.ForeignKey(TypeArticle, on_delete=models.CASCADE)
+    id_categorie = models.ForeignKey(
+        Categorie,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
     id_sous_categorie = models.ForeignKey(
         SousCategorie,
         on_delete=models.SET_NULL,
@@ -67,9 +83,7 @@ class Ressource(models.Model):
 
     @property
     def is_consommable(self):
-        return bool(
-            self.id_categorie and self.id_categorie.nom_categorie == "Consommable"
-        )
+        return bool(self.id_type and self.id_type.nom_categorie == "consommable")
 
     @property
     def is_bien_inventaire(self):
@@ -102,7 +116,6 @@ class Stock(models.Model):
 
     @property
     def quantite_reelle(self):
-        """Quantité réellement disponible pour de nouvelles demandes."""
         return self.quantite_disponible - self.quantite_reservee
 
     @property
@@ -121,11 +134,10 @@ class Stock(models.Model):
 
 class InstanceRessource(models.Model):
     STATUT_CHOICES = [
-        ("en_stock", "en_stock"),
-        ("en_service", "en_service"),
+        ("en_stock",       "en_stock"),
+        ("en_service",     "en_service"),
         ("en_maintenance", "en_maintenance"),
-        ("hors_service", "hors_service"),
-        ("retire", "retire"),
+        ("debarras",       "debarras"),
     ]
     ETAT_CHOICES = [
         ("neuf", "neuf"),

@@ -26,7 +26,7 @@ def _sync_marche_reference(marche, import_obj):
 
 def _find_or_create_ressource(instance):
     """Find or create a Ressource for a staging item. Returns None if cannot resolve."""
-    from apps.resources.models import Categorie, Ressource
+    from apps.resources.models import TypeArticle, Ressource
 
     ressource = instance.id_ressource_liee
 
@@ -41,14 +41,13 @@ def _find_or_create_ressource(instance):
         nom = (instance.designation_normalisee or instance.designation_brute or "").strip()
         type_detecte = instance.type_detecte
         if nom and type_detecte in ("consommable", "bien_inventaire"):
-            categorie = instance.id_categorie_suggeree
-            if not categorie:
-                cat_name = "Consommable" if type_detecte == "consommable" else "Bien Inventaire"
-                categorie = Categorie.objects.filter(nom_categorie=cat_name).first()
-            if categorie:
+            type_article = instance.id_categorie_suggeree
+            if not type_article:
+                type_article = TypeArticle.objects.filter(nom_categorie=type_detecte).first()
+            if type_article:
                 ressource = Ressource.objects.create(
                     designation=nom,
-                    id_categorie=categorie,
+                    id_type=type_article,
                     id_sous_categorie=instance.id_sous_categorie_suggeree,
                     unite_mesure=instance.unite or "unité",
                 )

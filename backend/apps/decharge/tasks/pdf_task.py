@@ -113,8 +113,8 @@ def _build_pdf_bytes(decharge, lignes=None) -> bytes:
     # ── Data ────────────────────────────────────────────────────────────────
     if lignes is None:
         lignes = list(decharge.lignes.select_related(
-            "id_ressource__id_sous_categorie__id_parent_sous_categorie",
-            "id_ressource__id_categorie",
+            "id_ressource__id_sous_categorie__id_categorie",
+            "id_ressource__id_type",
             "id_instance_ressource",
         ).all())
 

@@ -1,5 +1,6 @@
 import { apiClient } from './axios';
 
+export const getTypeArticles = (params = {}) => apiClient.get('/resources/types/', { params });
 export const getCategories = (params = {}) => apiClient.get('/resources/categories/', { params });
 export const createCategory = (data) => apiClient.post('/resources/categories/', data);
 export const updateCategory = (categoryId, data) => apiClient.patch(`/resources/categories/${categoryId}/`, data);
@@ -9,6 +10,9 @@ export const createSousCategory = (data) => apiClient.post('/resources/sous-cate
 export const updateSousCategory = (subCategoryId, data) => apiClient.patch(`/resources/sous-categories/${subCategoryId}/`, data);
 export const deleteSousCategory = (subCategoryId) => apiClient.delete(`/resources/sous-categories/${subCategoryId}/`);
 export const getRessources = (params = {}) => apiClient.get('/resources/ressources/', { params });
+export const createRessource = (data) => apiClient.post('/resources/ressources/', data);
+export const updateRessource = (id, data) => apiClient.patch(`/resources/ressources/${id}/`, data);
+export const deleteRessource = (id) => apiClient.delete(`/resources/ressources/${id}/`);
 export const getStock = (params = {}) => apiClient.get('/resources/stocks/', { params });
 export const updateStock = (stockId, data) => apiClient.patch(`/resources/stocks/${stockId}/`, data);
 export const setStockSeuil = (stockId, seuil_alerte) => apiClient.patch(`/resources/stocks/${stockId}/set_seuil/`, { seuil_alerte });
@@ -18,4 +22,5 @@ export const getStockSummary = () => apiClient.get('/resources/stock/summary/');
 export const getInstances = (params = {}) => apiClient.get('/resources/instances/', { params });
 export const getInstance = (instanceId) => apiClient.get(`/resources/instances/${instanceId}/`);
 export const updateInstance = (instanceId, data) => apiClient.patch(`/resources/instances/${instanceId}/`, data);
+export const deleteInstance = (instanceId) => apiClient.delete(`/resources/instances/${instanceId}/`);
 export const getMouvements = (params = {}) => apiClient.get('/resources/mouvements/', { params });

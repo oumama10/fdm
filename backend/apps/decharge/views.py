@@ -245,8 +245,8 @@ class DechargeViewSet(viewsets.ModelViewSet):
         if type_filter in ("consommable", "bien_inventaire"):
             lignes = list(
                 decharge.lignes.select_related(
-                    "id_ressource__id_sous_categorie__id_parent_sous_categorie",
-                    "id_ressource__id_categorie",
+                    "id_ressource__id_sous_categorie__id_categorie",
+                    "id_ressource__id_type",
                     "id_instance_ressource",
                 ).filter(type_ligne=type_filter)
             )
@@ -381,7 +381,7 @@ class SignatureDechargeViewSet(viewsets.GenericViewSet):
 
             lignes = _LD.objects.filter(
                 id_decharge=signature.id_decharge
-            ).select_related("id_ressource__id_categorie")
+            ).select_related("id_ressource__id_type")
 
             for ligne in lignes:
                 if ligne.type_ligne == "consommable" and ligne.quantite > 0:

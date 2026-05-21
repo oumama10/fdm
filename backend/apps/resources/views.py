@@ -15,6 +15,7 @@ from .models import (
     Ressource,
     SousCategorie,
     Stock,
+    TypeArticle,
 )
 from .serializers import (
     CategorieSerializer,
@@ -23,6 +24,7 @@ from .serializers import (
     RessourceSerializer,
     SousCategorieSerializer,
     StockSerializer,
+    TypeArticleSerializer,
 )
 
 
@@ -36,7 +38,20 @@ class _ReadUpdateViewSet(
 
 
 # ---------------------------------------------------------------------------
-# Categorie
+# TypeArticle  (read-only — only 2 rows: consommable / bien_inventaire)
+# ---------------------------------------------------------------------------
+
+
+class TypeArticleViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    serializer_class = TypeArticleSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return TypeArticle.objects.all()
+
+
+# ---------------------------------------------------------------------------
+# Categorie  (business categories, children of TypeArticle)
 # ---------------------------------------------------------------------------
 
 
@@ -44,16 +59,21 @@ class CategorieViewSet(viewsets.ModelViewSet):
     serializer_class = CategorieSerializer
 
     def get_queryset(self):
-        qs = Categorie.objects.all()
-        is_consommable = self.request.query_params.get("is_consommable")
-        if is_consommable is None:
-            return qs
+        qs = Categorie.objects.select_related("id_type").all()
+        id_type = self.request.query_params.get("id_type")
+        type_nom = self.request.query_params.get("type")
+        actif = self.request.query_params.get("actif")
 
-        normalized = str(is_consommable).strip().lower()
-        if normalized in ("true", "1", "yes"):
-            return qs.filter(nom_categorie="Consommable")
-        if normalized in ("false", "0", "no"):
-            return qs.filter(nom_categorie="Bien Inventaire")
+        if id_type:
+            qs = qs.filter(id_type_id=id_type)
+        if type_nom:
+            qs = qs.filter(id_type__nom_categorie=type_nom.lower())
+        if actif is not None:
+            normalized = str(actif).strip().lower()
+            if normalized in ("true", "1", "yes"):
+                qs = qs.filter(actif=True)
+            elif normalized in ("false", "0", "no"):
+                qs = qs.filter(actif=False)
         return qs
 
     def get_permissions(self):
@@ -70,32 +90,16 @@ class CategorieViewSet(viewsets.ModelViewSet):
 class SousCategorieViewSet(viewsets.ModelViewSet):
     serializer_class = SousCategorieSerializer
 
-    @staticmethod
-    def _is_true(value):
-        return str(value).strip().lower() in ("true", "1", "yes")
-
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [IsAuthenticated()]
         return [IsGestionnaireOrAdmin()]
 
     def get_queryset(self):
-        qs = SousCategorie.objects.select_related("id_categorie", "id_parent_sous_categorie").all()
+        qs = SousCategorie.objects.select_related("id_categorie").all()
         cat_id = self.request.query_params.get("id_categorie") or self.request.query_params.get("categorie")
-        parent_id = self.request.query_params.get("parent")
-        roots_only = self.request.query_params.get("roots_only")
-
         if cat_id:
             qs = qs.filter(id_categorie_id=cat_id)
-        if parent_id is not None:
-            normalized_parent = str(parent_id).strip().lower()
-            if normalized_parent in ("", "null", "none"):
-                qs = qs.filter(id_parent_sous_categorie__isnull=True)
-            else:
-                qs = qs.filter(id_parent_sous_categorie_id=parent_id)
-        if self._is_true(roots_only):
-            qs = qs.filter(id_parent_sous_categorie__isnull=True)
-
         return qs
 
 
@@ -116,7 +120,7 @@ class RessourceViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Ressource.objects.select_related(
-            "id_categorie", "id_sous_categorie"
+            "id_type", "id_categorie", "id_sous_categorie"
         ).annotate(
             instances_en_stock=Count(
                 "instanceressource",
@@ -125,9 +129,12 @@ class RessourceViewSet(viewsets.ModelViewSet):
         )
         params = self.request.query_params
 
+        id_type = params.get("id_type")
         cat_id = params.get("id_categorie") or params.get("categorie")
         scat_id = params.get("id_sous_categorie") or params.get("sous_categorie")
 
+        if id_type:
+            qs = qs.filter(id_type_id=id_type)
         if cat_id:
             qs = qs.filter(id_categorie_id=cat_id)
         if scat_id:
@@ -141,10 +148,8 @@ class RessourceViewSet(viewsets.ModelViewSet):
 
         # ?type=consommable | bien_inventaire
         type_param = params.get("type")
-        if type_param == "consommable":
-            qs = qs.filter(id_categorie__nom_categorie="Consommable")
-        elif type_param == "bien_inventaire":
-            qs = qs.filter(id_categorie__nom_categorie="Bien Inventaire")
+        if type_param:
+            qs = qs.filter(id_type__nom_categorie=type_param.lower())
 
         return qs
 
@@ -237,14 +242,11 @@ class InstanceRessourceViewSet(viewsets.ModelViewSet):
     serializer_class = InstanceRessourceSerializer
 
     def perform_update(self, serializer):
-        # type_affectation is auto-managed — never let the request body touch it.
         serializer.validated_data.pop("type_affectation", None)
         instance = serializer.instance
         if not instance.type_affectation:
-            # First assignment: auto-set to nouvelle_affectation
             serializer.save(type_affectation="nouvelle_affectation")
         else:
-            # Already set (nouvelle_affectation or reaffectation) — preserve as-is
             serializer.save()
 
     def get_permissions(self):
@@ -303,6 +305,8 @@ class MouvementStockViewSet(viewsets.ReadOnlyModelViewSet):
 
         if id_ressource := params.get("id_ressource"):
             qs = qs.filter(id_ressource=id_ressource)
+        if id_instance := params.get("id_instance"):
+            qs = qs.filter(id_instance_ressource=id_instance)
         if type_mouvement := params.get("type_mouvement"):
             qs = qs.filter(type_mouvement=type_mouvement)
         if date_from := params.get("date_from"):
@@ -370,7 +374,7 @@ class MouvementStockViewSet(viewsets.ReadOnlyModelViewSet):
 @api_view(["GET"])
 @permission_classes([IsGestionnaireOrAdmin])
 def stock_summary(request):
-    total_consommables = Ressource.objects.filter(id_categorie__nom_categorie="Consommable").count()
+    total_consommables = Ressource.objects.filter(id_type__nom_categorie="consommable").count()
     total_instances = InstanceRessource.objects.count()
 
     cons_alerts = Stock.objects.filter(
@@ -380,7 +384,7 @@ def stock_summary(request):
 
     bi_alerts = (
         Ressource.objects.filter(
-            id_categorie__nom_categorie="Bien Inventaire",
+            id_type__nom_categorie="bien_inventaire",
             seuil_alerte__isnull=False,
         )
         .annotate(
